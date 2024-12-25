@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import List, Set, Dict, Optional, Type
 import json
 import uuid
+import math
 
 @dataclass
 class EntityInfo:
@@ -197,13 +198,15 @@ class EntityNetwork:
     
     def update_connections(self, entity_info: EntityInfo):
         """更新实体之间的连接关系"""
+        tolerance = 0.001  # 连接判断的容差值
+        
         if entity_info.entity_type == 'LINE':
             line = entity_info.dxf_entity
             start_point = Vec3(line.dxf.start)
             end_point = Vec3(line.dxf.end)
             
             for other in self.entities:
-                if other.dxf_entity is line:
+                if other.id == entity_info.id:
                     continue
                 
                 if other.entity_type == 'LINE':
@@ -211,12 +214,52 @@ class EntityNetwork:
                     other_start = Vec3(other_line.dxf.start)
                     other_end = Vec3(other_line.dxf.end)
                     
-                    # 检查端点是否相连（使用ezdxf的Vec3进行计算）
-                    if (start_point.isclose(other_start) or 
-                        start_point.isclose(other_end) or
-                        end_point.isclose(other_start) or
-                        end_point.isclose(other_end)):
+                    # 检查端点是否相连或者非常接近
+                    if (start_point.isclose(other_start, abs_tol=tolerance) or 
+                        start_point.isclose(other_end, abs_tol=tolerance) or
+                        end_point.isclose(other_start, abs_tol=tolerance) or
+                        end_point.isclose(other_end, abs_tol=tolerance)):
                         self.add_connection(entity_info, other)
+                        
+                elif other.entity_type == 'CIRCLE':
+                    # 检查线段端点是否在圆上或圆心
+                    circle_center = Vec3(other.dxf_entity.dxf.center)
+                    radius = other.dxf_entity.dxf.radius
+                    
+                    # 检查端点到圆心的距离是否等于半径（在圆上）
+                    for point in [start_point, end_point]:
+                        dist_to_center = (point - circle_center).magnitude
+                        if abs(dist_to_center - radius) < tolerance:
+                            self.add_connection(entity_info, other)
+                            break
+                            
+                elif other.entity_type == 'ARC':
+                    # 检查线段端点是否在圆弧上
+                    arc_center = Vec3(other.dxf_entity.dxf.center)
+                    radius = other.dxf_entity.dxf.radius
+                    start_angle = other.dxf_entity.dxf.start_angle
+                    end_angle = other.dxf_entity.dxf.end_angle
+                    
+                    for point in [start_point, end_point]:
+                        dist_to_center = (point - arc_center).magnitude
+                        if abs(dist_to_center - radius) < tolerance:
+                            # 检查点是否在圆弧的角度范围内
+                            point_angle = math.degrees(math.atan2(
+                                point.y - arc_center.y,
+                                point.x - arc_center.x
+                            ))
+                            if point_angle < 0:
+                                point_angle += 360
+                                
+                            # 处理跨越0度的情况
+                            if start_angle > end_angle:
+                                is_in_range = point_angle >= start_angle or point_angle <= end_angle
+                            else:
+                                is_in_range = start_angle <= point_angle <= end_angle
+                                
+                            if is_in_range:
+                                self.add_connection(entity_info, other)
+                                break
     
     def add_connection(self, entity1: EntityInfo, entity2: EntityInfo):
         """添加两个实体之间的连接关系"""
@@ -319,12 +362,14 @@ class EntityNetwork:
         if 'max_size' in pattern:
             composite = CompositeEntity("temp", list(entities))
             bbox = composite.get_bounding_box()
-            if bbox:
-                width = bbox[1][0] - bbox[0][0]
-                height = bbox[1][1] - bbox[0][1]
-                if width > pattern['max_size'][0] or height > pattern['max_size'][1]:
-                    return False
-                    
+            if bbox is None:
+                return False
+            
+            width = bbox[1][0] - bbox[0][0]
+            height = bbox[1][1] - bbox[0][1]
+            if width > pattern['max_size'][0] or height > pattern['max_size'][1]:
+                return False
+                
         return True
     
     def get_entity_info(self, entity_info: EntityInfo) -> dict:
@@ -443,8 +488,91 @@ class EntityNetwork:
                     
         return matching_blocks
     
+    def find_similar_entity_groups(self, pattern: BlockPattern, tolerance: float = 0.1) -> List[List[EntityInfo]]:
+        """查找与模式相似的实体组"""
+        similar_groups = []
+        visited = set()
+        
+        # 遍历所有实体
+        for entity in self.entities:
+            if entity.id in visited:
+                continue
+                
+            # 从当前实体开始，找到所有相连的实体
+            connected = set()
+            to_visit = [entity]
+            
+            while to_visit:
+                current = to_visit.pop()
+                if current.id not in visited:
+                    connected.add(current)
+                    visited.add(current.id)
+                    # 获取相连的实体ID
+                    connected_ids = self.connections.get(current.id, set())
+                    # 将相连的实体添加到待访问列表
+                    to_visit.extend(
+                        next((e for e in self.entities if e.id == connected_id), None)
+                        for connected_id in connected_ids
+                    )
+            
+            # 检查这组实体是否匹配模式
+            if self._match_entity_group_to_pattern(list(connected), pattern, tolerance):
+                similar_groups.append(list(connected))
+        
+        return similar_groups
+    
+    def _match_entity_group_to_pattern(self, entities: List[EntityInfo], pattern: BlockPattern, tolerance: float) -> bool:
+        """检查一组实体是否匹配指定的模式"""
+        # 创建临时的复合实体来计算特征
+        temp_composite = CompositeEntity(name="temp")
+        for entity in entities:
+            temp_composite.add_entity(entity)
+            
+        # 获取这组实体的特征
+        bbox = temp_composite.get_bounding_box()
+        if bbox is None:
+            return False
+            
+        # 计算特征
+        width = bbox[1][0] - bbox[0][0]
+        height = bbox[1][1] - bbox[0][1]
+        aspect_ratio = width / height if height != 0 else None
+        
+        # 检查实体数量
+        if len(entities) != pattern.entity_count:
+            return False
+            
+        # 检查实体类型
+        entity_types = {e.entity_type for e in entities}
+        if not pattern.entity_types.issubset(entity_types):
+            return False
+            
+        # 检查尺寸
+        if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
+            return False
+            
+        if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
+            return False
+            
+        # 检查宽高比
+        if aspect_ratio is not None and pattern.aspect_ratio_range[0] is not None:
+            if not (pattern.aspect_ratio_range[0] <= aspect_ratio <= pattern.aspect_ratio_range[1]):
+                return False
+                
+        # 检查拓扑结构（可选，根据需要添加更多的拓扑检查）
+        if not self._check_topology(entities, pattern):
+            return False
+            
+        return True
+    
+    def _check_topology(self, entities: List[EntityInfo], pattern: BlockPattern) -> bool:
+        """检查实体组的拓扑结构是否匹配模式"""
+        # 这里可以添加更多的拓扑检查逻辑
+        # 例如：检查线段的连接关系、相对位置等
+        return True
+
 if __name__ == "__main__":
-    # 1. 从源文件提取所有block的模式
+    # 1. 从源文件提取block模式
     source_network = EntityNetwork("单元素研究_阀门/单个模块-一个阀门-在0图层.dxf")
     block_patterns = source_network.extract_block_patterns()
     
@@ -461,16 +589,28 @@ if __name__ == "__main__":
         
         # 2. 在目标文件中查找匹配的 blocks
         target_network = EntityNetwork("Drawing1.dxf")
-        all_matching_blocks = []
+        all_matching_groups = []
         
         for pattern in block_patterns:
+            # 查找block引用
             matching_blocks = target_network.find_matching_blocks(pattern)
-            all_matching_blocks.extend(matching_blocks)
+            all_matching_groups.extend([(block,) for block in matching_blocks])
+            
+            # 查找相似的实体组
+            similar_groups = target_network.find_similar_entity_groups(pattern)
+            all_matching_groups.extend(similar_groups)
         
-        print(f"\n在目标文件中找到 {len(all_matching_blocks)} 个匹配的 blocks:")
-        for block in all_matching_blocks:
-            print(f"- 位置: {block.position}")
-            print(f"- 旋转角度: {block.rotation}")
-            print(f"- 缩放: {block.scale}")
+        print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
+        for group in all_matching_groups:
+            if len(group) == 1 and group[0].entity_type == 'INSERT':
+                block = group[0]
+                print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}")
+            else:
+                bbox = CompositeEntity("temp", list(group)).get_bounding_box()
+                center = (
+                    (bbox[0][0] + bbox[1][0]) / 2,
+                    (bbox[0][1] + bbox[1][1]) / 2
+                )
+                print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}")
     else:
         print("未能提取到任何block模式")

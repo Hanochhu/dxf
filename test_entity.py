@@ -540,5 +540,115 @@ class TestEntityNetwork(unittest.TestCase):
             print(f"- 实体类型: {features['entity_types']}")
             print(f"- 边界框: {features['bounding_box']}")
 
+    def test_find_variants(self):
+        """测试使用原始特征查找变体文件中的各个变体位置"""
+        if not self.imported_features:
+            self.skipTest("没有导入的元件可供测试")
+            
+        # 预期的变体位置
+        expected_positions = {
+            'basic':            (0, 0),
+            'rotated':          (80, 0),
+            'scaled':           (160, 0),
+            'rotated_scaled':   (240, 0),
+            'exploded':         (0, -80),
+            'exploded_rotated': (80, -80),
+            'exploded_scaled':  (160, -80)
+        }
+        
+        for block_name, original_features in self.imported_features.items():
+            print(f"\n测试元件 {block_name} 的变体定位:")
+            
+            # 获取变体文件
+            variant_file = self.test_files[block_name]
+            network = EntityNetwork(str(variant_file))
+            
+            # 从原始特征创建模式
+            pattern = BlockPattern.from_block_features(original_features)
+            self.assertIsNotNone(pattern, f"无法从原始特征创建模式: {block_name}")
+            
+            # 查找所有匹配的块引用和实体组
+            blocks = network.find_matching_blocks(pattern)
+            similar_groups = network.find_similar_entity_groups(pattern)
+            
+            # 验证找到的变体数量
+            total_variants = len([v for v in expected_positions.keys() 
+                                if not v.startswith('exploded')])
+            total_exploded = len([v for v in expected_positions.keys() 
+                                if v.startswith('exploded')])
+            
+            self.assertEqual(
+                len(blocks), 
+                total_variants,
+                f"块引用变体数量不匹配: 期望 {total_variants}, 实际 {len(blocks)}"
+            )
+            self.assertEqual(
+                len(similar_groups),
+                total_exploded,
+                f"分解变体数量不匹配: 期望 {total_exploded}, 实际 {len(similar_groups)}"
+            )
+            
+            # 验证每个变体的位置
+            found_positions = set()
+            
+            # 检查块引用变体
+            for block in blocks:
+                pos = (round(block.position[0]), round(block.position[1]))
+                found_positions.add(pos)
+                
+                # 查找对应的变体名称
+                variant_name = next(
+                    (name for name, exp_pos in expected_positions.items()
+                     if abs(exp_pos[0] - pos[0]) < 0.1 and 
+                        abs(exp_pos[1] - pos[1]) < 0.1 and
+                        not name.startswith('exploded')),
+                    None
+                )
+                
+                self.assertIsNotNone(
+                    variant_name,
+                    f"在位置 {pos} 找到的块引用不匹配任何预期变体"
+                )
+                print(f"找到变体 {variant_name} 在位置 {pos}")
+            
+            # 检查分解变体
+            for group in similar_groups:
+                bbox = CompositeEntity("temp", group).get_bounding_box()
+                self.assertIsNotNone(bbox, "实体组没有有效的边界框")
+                
+                center = (
+                    round((bbox[0][0] + bbox[1][0]) / 2),
+                    round((bbox[0][1] + bbox[1][1]) / 2)
+                )
+                found_positions.add(center)
+                
+                # 查找对应的变体名称
+                variant_name = next(
+                    (name for name, exp_pos in expected_positions.items()
+                     if abs(exp_pos[0] - center[0]) < 0.1 and 
+                        abs(exp_pos[1] - center[1]) < 0.1 and
+                        name.startswith('exploded')),
+                    None
+                )
+                
+                self.assertIsNotNone(
+                    variant_name,
+                    f"在位置 {center} 找到的实体组不匹配任何预期变体"
+                )
+                print(f"找到分解变体 {variant_name} 在位置 {center}")
+            
+            # 验证是否找到了所有变体
+            expected_pos_set = set(expected_positions.values())
+            self.assertEqual(
+                len(found_positions),
+                len(expected_positions),
+                f"找到的变体数量不正确: 期望 {len(expected_positions)}, 实际 {len(found_positions)}"
+            )
+            self.assertEqual(
+                found_positions,
+                {(x, y) for x, y in expected_positions.values()},
+                "找到的变体位置集合与预期不匹配"
+            )
+
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main(verbosity=0)

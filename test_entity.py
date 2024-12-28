@@ -26,12 +26,26 @@ class TestEntityNetwork(unittest.TestCase):
         cls.test_output_dir = Path("test_output")
         cls.test_output_dir.mkdir(exist_ok=True)
         
-        # 设置容差配置
-        cls.tolerances = {
-            'point_tolerance': 0.5,    # 点距离容差
-            'count_tolerance': 1,      # 实体数量容差
-            'size_tolerance': 0.2,     # 尺寸容差（20%）
-            'ratio_tolerance': 0.2,    # 宽高比容差（20%）
+
+        # 创建测试文件目录
+        cls.test_dir = Path("test_dxf_files")
+        if cls.test_dir.exists():
+            for file in cls.test_dir.glob("*"):
+                file.unlink()
+        else:
+            cls.test_dir.mkdir(exist_ok=True)
+        print(f"创建测试文件目录: {cls.test_dir.absolute()}")
+        
+        # 定义变体参数
+        variants = {
+            'basic': {'rotation': 0, 'scale': 1.0, 'exploded': False},
+            'rotated': {'rotation': 90, 'scale': 1.0, 'exploded': False},
+            'scaled': {'rotation': 0, 'scale': 2.0, 'exploded': False},
+            'rotated_scaled': {'rotation': 90, 'scale': 2.0, 'exploded': False},
+            'exploded': {'rotation': 0, 'scale': 1.0, 'exploded': True},
+            'exploded_rotated': {'rotation': 90, 'scale': 1.0, 'exploded': True},
+            'exploded_scaled': {'rotation': 0, 'scale': 2.0, 'exploded': True}
+
         }
         
         # 加载所有标准元件的模式

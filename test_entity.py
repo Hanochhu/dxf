@@ -74,11 +74,11 @@ class TestEntityNetwork(unittest.TestCase):
         # 定义变体参数
         variants = {
             'basic': {'rotation': 0, 'scale': 1.0, 'exploded': False},
-            'rotated': {'rotation': 45, 'scale': 1.0, 'exploded': False},
+            'rotated': {'rotation': 90, 'scale': 1.0, 'exploded': False},
             'scaled': {'rotation': 0, 'scale': 2.0, 'exploded': False},
-            'rotated_scaled': {'rotation': 45, 'scale': 2.0, 'exploded': False},
+            'rotated_scaled': {'rotation': 90, 'scale': 2.0, 'exploded': False},
             'exploded': {'rotation': 0, 'scale': 1.0, 'exploded': True},
-            'exploded_rotated': {'rotation': 45, 'scale': 1.0, 'exploded': True},
+            'exploded_rotated': {'rotation': 90, 'scale': 1.0, 'exploded': True},
             'exploded_scaled': {'rotation': 0, 'scale': 2.0, 'exploded': True}
         }
         

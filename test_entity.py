@@ -74,19 +74,23 @@ class TestEntityNetwork(unittest.TestCase):
         # 定义变体参数
         variants = {
             'basic': {'rotation': 0, 'scale': 1.0, 'exploded': False},
-            'rotated': {'rotation': 45, 'scale': 1.0, 'exploded': False},
+            'rotated': {'rotation': 90, 'scale': 1.0, 'exploded': False},
             'scaled': {'rotation': 0, 'scale': 2.0, 'exploded': False},
-            'rotated_scaled': {'rotation': 45, 'scale': 2.0, 'exploded': False},
+            'rotated_scaled': {'rotation': 90, 'scale': 2.0, 'exploded': False},
             'exploded': {'rotation': 0, 'scale': 1.0, 'exploded': True},
-            'exploded_rotated': {'rotation': 45, 'scale': 1.0, 'exploded': True},
+            'exploded_rotated': {'rotation': 90, 'scale': 1.0, 'exploded': True},
             'exploded_scaled': {'rotation': 0, 'scale': 2.0, 'exploded': True}
         }
         
+        # 定义单个元件目录
+        cls.single_blocks_dir = Path("extracted_blocks")
+        # 定义全局缩放比例
+        global_scale=20.0
+
         # 导入单个元件DXF文件（如果存在）
-        single_blocks_dir = Path("single_blocks")
-        if single_blocks_dir.exists():
+        if cls.single_blocks_dir.exists():
             print("\n开始导入单个元件DXF文件...")
-            cls.imported_features = cls._import_single_blocks(single_blocks_dir)
+            cls.imported_features = cls._import_single_blocks(cls.single_blocks_dir)
             print(f"共导入 {len(cls.imported_features)} 个元件特征")
             
             # 为每个导入的元件生成变体和预览图
@@ -94,11 +98,11 @@ class TestEntityNetwork(unittest.TestCase):
             for block_name, features in cls.imported_features.items():
                 try:
                     print(f"\n处理元件: {block_name}")
-                    source_dxf = Path(f"single_blocks/{block_name}.dxf")
+                    source_dxf = cls.single_blocks_dir / f"{block_name}.dxf"
                     
-                    # 生成变体文件
+                    # 生成变体文件 - 使用 global_scale=20.0
                     variants_file = cls.test_dir / f"{block_name}_variants.dxf"
-                    cls._create_test_valve_dxf(variants_file, str(source_dxf), variants)
+                    cls._create_test_valve_dxf(variants_file, str(source_dxf), variants, global_scale=global_scale)
                     cls.test_files[block_name] = variants_file
                     
                     # 验证变体文件是否生成
@@ -126,7 +130,7 @@ class TestEntityNetwork(unittest.TestCase):
             print("\n未找到单个元件目录，跳过导入")
 
     @staticmethod
-    def _create_test_valve_dxf(filename, source_dxf, variants):
+    def _create_test_valve_dxf(filename, source_dxf, variants, global_scale=20.0):
         """创建单个元件的所有变体测试文件"""
         print(f"\n开始创建变体文件: {filename}")
         print(f"源文件: {source_dxf}")
@@ -213,8 +217,8 @@ class TestEntityNetwork(unittest.TestCase):
                             msp.add_blockref(block.name, pos, dxfattribs={
                                 'layer': 'BLOCK',
                                 'rotation': params['rotation'],
-                                'xscale': params['scale'],
-                                'yscale': params['scale']
+                                'xscale': params['scale']*global_scale,
+                                'yscale': params['scale']*global_scale
                             })
                             print(f"添加了块引用变体: {variant_name}")
                             break
@@ -226,7 +230,7 @@ class TestEntityNetwork(unittest.TestCase):
                         
                         # 计算变换参数
                         angle = radians(params['rotation'])
-                        scale = params['scale']
+                        scale = params['scale'] * global_scale
                         dx, dy = pos[0], pos[1]
                         
                         # 复制并变换每个实体
@@ -329,7 +333,7 @@ class TestEntityNetwork(unittest.TestCase):
         
         # 测试第一个导入的元件文件
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         self.assertGreater(len(network.entities), 0)
 
     def test_extract_block_patterns(self):
@@ -338,7 +342,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         patterns = network.extract_block_patterns()
         
         # 验证提取的模式数量
@@ -365,7 +369,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         patterns = network.extract_block_patterns()
         
         for pattern in patterns:
@@ -392,7 +396,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         patterns = network.extract_block_patterns()
         
         for pattern in patterns:
@@ -422,7 +426,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         
         # 获取所有块的特征
         for pattern in network.extract_block_patterns():
@@ -455,7 +459,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         
         # 创建复合实体（使用所有可用的实体）
         entities = network.entities
@@ -471,7 +475,7 @@ class TestEntityNetwork(unittest.TestCase):
             self.skipTest("没有导入的元件可供测试")
         
         block_name = next(iter(self.imported_features))
-        network = EntityNetwork(f"single_blocks/{block_name}.dxf")
+        network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
         
         # 测试单个块的边界框
         for entity in network.entities:

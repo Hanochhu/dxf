@@ -264,6 +264,23 @@ class TestEntityNetwork(unittest.TestCase):
                                         if new_entity.dxftype() == 'ARC':
                                             new_entity.dxf.start_angle += params['rotation']
                                             new_entity.dxf.end_angle += params['rotation']
+                                            
+                                    elif new_entity.dxftype() == 'LWPOLYLINE':
+                                        # 变换多段线的所有顶点
+                                        new_points = []
+                                        for vertex in new_entity.get_points():
+                                            x = vertex[0] * scale * cos(angle) - vertex[1] * scale * sin(angle) + dx
+                                            y = vertex[0] * scale * sin(angle) + vertex[1] * scale * cos(angle) + dy
+                                            # 保持原有的凸度和宽度属性（如果存在）
+                                            if len(vertex) > 2:
+                                                new_points.append((x, y) + vertex[2:])
+                                            else:
+                                                new_points.append((x, y))
+                                        new_entity.set_points(new_points)
+                                        
+                                        # 如果有宽度属性，也需要缩放
+                                        if hasattr(new_entity.dxf, 'const_width'):
+                                            new_entity.dxf.const_width *= scale
                                 
                                 new_entity.dxf.layer = 'BLOCK'
                                 msp.add_entity(new_entity)

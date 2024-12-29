@@ -198,7 +198,7 @@ class EntityNetwork:
     
     def update_connections(self, entity_info: EntityInfo):
         """更新实体之间的连接关系"""
-        tolerance = 0.001  # 连接判断的容差值
+        tolerance = 0.01  # 连接判断的容差值
         
         if entity_info.entity_type == 'LINE':
             line = entity_info.dxf_entity

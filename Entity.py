@@ -573,7 +573,7 @@ class EntityNetwork:
 
 if __name__ == "__main__":
     # 1. 从源文件提取block模式
-    source_network = EntityNetwork("单元素研究_阀门/单个模块-一个阀门-在0图层.dxf")
+    source_network = EntityNetwork("extracted_blocks/37710.dxf")
     block_patterns = source_network.extract_block_patterns()
     
     if block_patterns:
@@ -588,7 +588,7 @@ if __name__ == "__main__":
             print(f"- 图层: {pattern.layers}")
         
         # 2. 在目标文件中查找匹配的 blocks
-        target_network = EntityNetwork("Drawing1.dxf")
+        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-01-T3-2158.dxf")
         all_matching_groups = []
         
         for pattern in block_patterns:

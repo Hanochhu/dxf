@@ -44,6 +44,34 @@ class DxfBlockExtractor:
         # 如果文件名为空，使用默认名称
         return cleaned if cleaned else 'block'
 
+    def _extract_nested_blocks(self, block_name: str, target_doc):
+        """递归提取嵌套块定义
+        
+        Args:
+            block_name: 块名称
+            target_doc: 目标DXF文档
+        """
+        if block_name not in self.doc.blocks:
+            self.logger.warning(f"块定义 '{block_name}' 不存在")
+            return
+        
+        # 如果块已提取，跳过
+        if block_name in target_doc.blocks:
+            return
+        
+        # 提取当前块
+        source_block = self.doc.blocks.get(block_name)
+        target_block = target_doc.blocks.new(block_name)
+        
+        # 复制块中的实体
+        for entity in source_block:
+            target_block.add_entity(entity.copy())
+            
+            # 如果实体是 INSERT，递归提取嵌套块
+            if entity.dxftype() == 'INSERT':
+                nested_block_name = entity.dxf.name
+                self._extract_nested_blocks(nested_block_name, target_doc)
+
     def _create_block_file(self, block_name: str, entities: List) -> Optional[Path]:
         """为单个块创建DXF文件
         
@@ -59,12 +87,8 @@ class DxfBlockExtractor:
             new_doc = ezdxf.new('R2010')
             msp = new_doc.modelspace()
             
-            # 创建新块
-            new_block = new_doc.blocks.new(name=block_name)
-            
-            # 复制实体到新块
-            for entity in entities:
-                new_block.add_entity(entity.copy())
+            # 提取当前块及其嵌套块
+            self._extract_nested_blocks(block_name, new_doc)
             
             # 在模型空间中插入块引用
             msp.add_blockref(block_name, (0, 0))

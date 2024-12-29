@@ -22,34 +22,45 @@ class TestEntityNetwork(unittest.TestCase):
         block_features = {}
         
         if not blocks_dir.exists():
-            # print(f"警告: 目录不存在 {blocks_dir}")
+            print(f"警告: 目录不存在 {blocks_dir}")
             return block_features
         
         # 遍历目录中的所有DXF文件
         for dxf_file in blocks_dir.glob("*.dxf"):
             try:
+                print(f"\n处理文件: {dxf_file.name}")
+                
                 # 导入DXF文件
                 network = EntityNetwork(str(dxf_file))
+                print(f"- 成功创建 EntityNetwork")
                 
                 # 提取块模式
                 patterns = network.extract_block_patterns()
+                print(f"- 找到 {len(patterns)} 个块模式")
                 
                 if patterns:
                     # 获取第一个块的特征
                     pattern = patterns[0]
+                    print(f"- 第一个块模式: {pattern.name}")
+                    
                     features = network.get_block_features(pattern.name)
                     if features:
                         block_features[dxf_file.stem] = features
-                        # print(f"成功提取特征: {dxf_file.name}")
-                    # else:
-                        # print(f"未能获取块特征: {dxf_file.name}")
-                # else:
-                    # print(f"未找到块模式: {dxf_file.name}")
+                        print(f"√ 成功提取特征")
+                        print(f"  - 实体数量: {features['entity_count']}")
+                        print(f"  - 实体类型: {features['entity_types']}")
+                        print(f"  - 边界框: {features['bounding_box']}")
+                    else:
+                        print(f"× 未能获取块特征")
+                else:
+                    print(f"× 未找到块模式")
                     
             except Exception as e:
-                # print(f"处理文件失败 {dxf_file.name}: {str(e)}")
-                pass
+                print(f"× 处理文件失败: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
         
+        print(f"\n总共导入 {len(block_features)} 个元件特征")
         return block_features
 
     @classmethod
@@ -372,7 +383,7 @@ class TestEntityNetwork(unittest.TestCase):
                 
                 for pattern in patterns:
                     matches = network.find_matching_blocks(pattern)
-                    self.assertGreaterEqual(len(matches), 0)
+                    self.assertGreater(len(matches), 0)
                     
                     # 验证匹配的特征
                     for match in matches:
@@ -393,45 +404,56 @@ class TestEntityNetwork(unittest.TestCase):
                 self._record_test_result('test_find_matching_blocks', block_name, success=False, error=e)
 
     def test_find_similar_entity_groups(self):
-        """测试相似实体组查找功能"""
+        """测试相似实体组查找功能，包括分解成普通线条的场景"""
         if not self.imported_features:
             self.skipTest("没有导入的元件可供测试")
         
         for block_name in self.imported_features:
             try:
-                network = EntityNetwork(str(self.single_blocks_dir / f"{block_name}.dxf"))
-                patterns = network.extract_block_patterns()
+                # 加载测试文件
+                variant_file = self.test_files[block_name]
+                network = EntityNetwork(str(variant_file))
                 
-                for pattern in patterns:
-                    groups = network.find_similar_entity_groups(pattern)
-                    self.assertGreaterEqual(len(groups), 0)
+                # 从原始特征创建模式
+                original_features = self.imported_features[block_name]
+                pattern = BlockPattern.from_block_features(original_features)
+                self.assertIsNotNone(pattern, f"无法从原始特征创建模式: {block_name}")
+                
+                # 查找相似实体组
+                groups = network.find_similar_entity_groups(pattern)
+                
+                # 打印调试信息
+                print(f"\n调试信息 - 块: {block_name}")
+                print(f"找到的相似组数量: {len(groups)}")
+                
+                # 验证至少找到一个组（分解后的实体组）
+                self.assertGreater(len(groups), 0, f"块 {block_name} 未找到任何相似实体组")
+                
+                # 验证每个组的特征
+                for i, group in enumerate(groups):
+                    # 验证组中的实体数量
+                    self.assertEqual(len(group.entities), pattern.entity_count,
+                                   f"块 {block_name} 的组 {i + 1} 实体数量不匹配: 期望 {pattern.entity_count}, 实际 {len(group.entities)}")
                     
-                    # 打印调试信息
-                    print(f"\n调试信息 - 块: {block_name}, 模式: {pattern.name}")
-                    print(f"找到的相似组数量: {len(groups)}")
+                    # 验证组中的实体类型
+                    group_types = set(entity.entity_type for entity in group.entities)
+                    self.assertEqual(group_types, set(pattern.entity_types),
+                                   f"块 {block_name} 的组 {i + 1} 实体类型不匹配: 期望 {set(pattern.entity_types)}, 实际 {group_types}")
                     
-                    # 验证每个组的特征
-                    for i, group in enumerate(groups):
-                        # 验证组中的实体数量
-                        self.assertEqual(len(group.entities), pattern.entity_count)
-                        
-                        # 验证组中的实体类型
-                        group_types = set(entity.entity_type for entity in group.entities)
-                        self.assertEqual(group_types, set(pattern.entity_types))
-                        
-                        # 验证组的边界框
-                        self.assertIsNotNone(group.bounding_box)
-                        
-                        # 打印组详细信息
-                        print(f"\n组 {i + 1} 的详细信息:")
-                        print(f"- 实体数量: {len(group.entities)}")
-                        print(f"- 实体类型: {group_types}")
-                        print(f"- 边界框: {group.bounding_box}")
-                        print(f"- 实体列表:")
-                        for entity in group.entities:
-                            print(f"  - {entity.entity_type}: {entity.position}")
+                    # 验证组的边界框
+                    self.assertIsNotNone(group.bounding_box,
+                                       f"块 {block_name} 的组 {i + 1} 没有有效的边界框")
                     
-                    self._record_test_result('test_find_similar_entity_groups', block_name)
+                    # 打印组详细信息
+                    print(f"\n组 {i + 1} 的详细信息:")
+                    print(f"- 实体数量: {len(group.entities)}")
+                    print(f"- 实体类型: {group_types}")
+                    print(f"- 边界框: {group.bounding_box}")
+                    print(f"- 实体列表:")
+                    for entity in group.entities:
+                        print(f"  - {entity.entity_type}: {entity.position}")
+                
+                self._record_test_result('test_find_similar_entity_groups', block_name)
             except AssertionError as e:
                 self._record_test_result('test_find_similar_entity_groups', block_name, success=False, error=e)
 

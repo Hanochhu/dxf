@@ -108,10 +108,18 @@ class TestEntityNetwork(unittest.TestCase):
             
             # 为每个导入的元件生成变体和预览图
             cls.test_files = {}
+            failed_blocks = set()  # 用于记录处理失败的块
+            
             for block_name, features in cls.imported_features.items():
                 try:
                     # print(f"\n处理元件: {block_name}")
                     source_dxf = cls.single_blocks_dir / f"{block_name}.dxf"
+                    
+                    # 检查源文件是否存在
+                    if not source_dxf.exists():
+                        print(f"源文件不存在: {source_dxf}")
+                        failed_blocks.add(block_name)
+                        continue
                     
                     # 生成变体文件 - 使用 global_scale=20.0
                     variants_file = cls.test_dir / f"{block_name}_variants.dxf"
@@ -131,15 +139,19 @@ class TestEntityNetwork(unittest.TestCase):
                             # print(f"变体预览图已生成: {variants_preview}")
                             pass
                         # else:
-                            # print(f"错误: 变体预览图未生成: {variants_preview}")
+                            # print(f"错误: 预览图未生成: {variants_preview}")
                     # else:
                         # print(f"错误: 变体文件未生成: {variants_file}")
                         
                 except Exception as e:
-                    # print(f"处理文件失败 {block_name}: {str(e)}")
-                    # import traceback
-                    # print(traceback.format_exc())
-                    pass
+                    print(f"处理文件失败 {block_name}: {str(e)}")
+                    import traceback
+                    print(traceback.format_exc())
+                    failed_blocks.add(block_name)
+            
+            # 迭代结束后再删除失败的块
+            for block_name in failed_blocks:
+                del cls.imported_features[block_name]
         else:
             cls.imported_features = {}
             # print("\n未找到单个元件目录，跳过导入")
@@ -243,18 +255,15 @@ class TestEntityNetwork(unittest.TestCase):
                     # 分解块
                     if source_block:
                         # print(f"开始分解块: {variant_name}")
-                        from math import radians, cos, sin
                         
                         # 计算变换参数
                         angle = radians(params['rotation'])
                         scale = params['scale'] * global_scale
                         dx, dy = pos[0], pos[1]
                         
-                        # 开始分解块
+                        # 递归分解块中的所有实体
                         for entity in source_block:
                             _explode_entity(entity, doc, msp, angle, scale, dx, dy, params['rotation'])
-                        
-                        # print(f"完成分解块: {variant_name}")
         
         # print(f"保存文件到: {filename}")
         doc.saveas(filename)
@@ -709,7 +718,7 @@ class TestEntityNetwork(unittest.TestCase):
         
         # 移除直接输出，统一通过 _print_test_stats 输出
 
-def _explode_entity(entity, doc, msp, angle, scale, dx, dy, rotation, transform=None):
+def _explode_entity(entity, doc, msp, angle, scale, dx, dy, rotation):
     """递归分解实体及其嵌套块
     
     Args:
@@ -720,26 +729,36 @@ def _explode_entity(entity, doc, msp, angle, scale, dx, dy, rotation, transform=
         scale: 缩放比例
         dx, dy: 平移距离
         rotation: 旋转角度（度）
-        transform: 当前变换矩阵
     """
     try:
-        new_entity = entity.copy()
+        # 打印实体类型和属性
+        print(f"处理实体: {entity.dxftype()}")
+        if hasattr(entity, 'dxf'):
+            print(f"  属性: {[attr for attr in dir(entity.dxf) if not attr.startswith('_')]}")
         
-        # 应用变换矩阵
-        if transform:
-            new_entity.transform(transform)
+        new_entity = entity.copy()
         
         # 如果实体是 INSERT，递归分解嵌套块
         if new_entity.dxftype() == 'INSERT':
             nested_block_name = new_entity.dxf.name
             if nested_block_name in doc.blocks:
-                # 计算嵌套块的变换矩阵
-                nested_transform = new_entity.matrix()
-                if transform:
-                    nested_transform = transform @ nested_transform
-                # 递归分解嵌套块
+                # 获取块的插入点和变换参数
+                insert_pos = new_entity.dxf.insert
+                insert_rotation = new_entity.dxf.rotation if hasattr(new_entity.dxf, 'rotation') else 0
+                insert_scale = new_entity.dxf.xscale if hasattr(new_entity.dxf, 'xscale') else 1.0
+                
+                # 计算新的变换参数
+                # 1. 先计算插入点的新位置（考虑旋转和缩放）
+                new_x = insert_pos[0] * scale * cos(angle) - insert_pos[1] * scale * sin(angle) + dx
+                new_y = insert_pos[0] * scale * sin(angle) + insert_pos[1] * scale * cos(angle) + dy
+                
+                # 2. 计算组合旋转角度和缩放比例
+                new_angle = angle + radians(insert_rotation)
+                new_scale = scale * insert_scale
+                
+                # 递归分解嵌套块中的每个实体
                 for nested_entity in doc.blocks.get(nested_block_name):
-                    _explode_entity(nested_entity, doc, msp, angle, scale, dx, dy, rotation, nested_transform)
+                    _explode_entity(nested_entity, doc, msp, new_angle, new_scale, new_x, new_y, rotation + insert_rotation)
             else:
                 print(f"警告: 嵌套块 '{nested_block_name}' 不存在")
         else:
@@ -771,27 +790,80 @@ def _explode_entity(entity, doc, msp, angle, scale, dx, dy, rotation, transform=
                         new_entity.dxf.end_angle += rotation
                         
                 elif new_entity.dxftype() == 'LWPOLYLINE':
+                    # 获取所有顶点数据（包括凸度和宽度）
+                    vertices = list(new_entity.vertices())
                     # 变换多段线的所有顶点
                     new_points = []
-                    for vertex in new_entity.get_points():
+                    for vertex in vertices:
+                        # vertex 是一个 (x, y, [bulge], [start_width, end_width], [id]) 元组
                         x = vertex[0] * scale * cos(angle) - vertex[1] * scale * sin(angle) + dx
                         y = vertex[0] * scale * sin(angle) + vertex[1] * scale * cos(angle) + dy
-                        # 保持原有的凸度和宽度属性（如果存在）
-                        if len(vertex) > 2:
-                            new_points.append((x, y) + vertex[2:])
-                        else:
-                            new_points.append((x, y))
+                        
+                        # 保持原有的凸度和宽度属性
+                        point = [x, y]
+                        if len(vertex) > 2:  # 有凸度
+                            point.append(vertex[2])
+                        if len(vertex) > 3:  # 有宽度
+                            start_width = vertex[3] * scale if vertex[3] is not None else None
+                            end_width = vertex[4] * scale if vertex[4] is not None else None
+                            point.extend([start_width, end_width])
+                        new_points.append(tuple(point))
+                    
+                    # 设置新的顶点
                     new_entity.set_points(new_points)
                     
-                    # 如果有宽度属性，也需要缩放
+                    # 如果有全局宽度，也需要缩放
                     if hasattr(new_entity.dxf, 'const_width'):
                         new_entity.dxf.const_width *= scale
-            
+                
+                elif new_entity.dxftype() == 'ATTDEF':
+                    try:
+                        # 打印详细的ATTDEF属性信息
+                        print(f"处理ATTDEF实体:")
+                        print(f"  插入点: {new_entity.dxf.insert}")
+                        print(f"  对齐点: {new_entity.dxf.align_point if hasattr(new_entity.dxf, 'align_point') else 'None'}")
+                        print(f"  高度: {new_entity.dxf.height}")
+                        print(f"  旋转: {new_entity.dxf.rotation if hasattr(new_entity.dxf, 'rotation') else 0}")
+                        
+                        # 变换插入点
+                        insert = new_entity.dxf.insert
+                        x = insert[0] * scale * cos(angle) - insert[1] * scale * sin(angle) + dx
+                        y = insert[0] * scale * sin(angle) + insert[1] * scale * cos(angle) + dy
+                        new_entity.dxf.insert = (x, y)
+                        
+                        # 如果有对齐点，也需要变换
+                        if hasattr(new_entity.dxf, 'align_point') and new_entity.dxf.align_point is not None:
+                            align = new_entity.dxf.align_point
+                            if isinstance(align, (tuple, list)) and len(align) >= 2:
+                                x = align[0] * scale * cos(angle) - align[1] * scale * sin(angle) + dx
+                                y = align[0] * scale * sin(angle) + align[1] * scale * cos(angle) + dy
+                                new_entity.dxf.align_point = (x, y)
+                            else:
+                                print(f"  警告: 对齐点格式无效: {align}")
+                        
+                        # 调整文本高度和旋转
+                        new_entity.dxf.height *= scale
+                        if hasattr(new_entity.dxf, 'rotation'):
+                            new_entity.dxf.rotation += rotation
+                        
+                        # 如果有宽度，也需要缩放
+                        if hasattr(new_entity.dxf, 'width'):
+                            new_entity.dxf.width *= scale
+                            
+                    except Exception as e:
+                        print(f"处理ATTDEF实体时出错: {str(e)}")
+                        # 继续处理，不中断程序
+                
+                # 设置图层并添加实体
                 new_entity.dxf.layer = 'BLOCK'
                 msp.add_entity(new_entity)
+            else:
+                print(f"警告: 实体没有dxf属性: {new_entity.dxftype()}")
             
     except Exception as e:
         print(f"处理实体失败: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)  # 设置 verbosity=1，只显示统计信息

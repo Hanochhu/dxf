@@ -5,6 +5,7 @@ from typing import List, Set, Dict, Optional, Type
 import json
 import uuid
 import math
+import networkx as nx
 
 @dataclass
 class EntityInfo:
@@ -493,6 +494,78 @@ class EntityNetwork:
         similar_groups = []
         visited = set()
         
+        # 第一步：找到所有候选的特殊实体
+        special_entities = []
+        for entity in self.entities:
+            # 排除线段
+            if entity.entity_type == 'LINE':
+                continue
+                
+            # 检查实体是否具有特殊特征
+            if self._is_special_entity(entity, pattern):
+                special_entities.append(entity)
+        
+        # 如果没有找到特殊实体，则使用原始方法
+        if not special_entities:
+            return self._find_similar_entity_groups_fallback(pattern, tolerance)
+            
+        # 第二步：从每个特殊实体开始，找到所有相连的实体
+        for special_entity in special_entities:
+            if special_entity.id in visited:
+                continue
+                
+            # 从特殊实体开始，找到所有相连的实体
+            connected = set()
+            to_visit = [special_entity]
+            
+            while to_visit:
+                current = to_visit.pop()
+                if current.id not in visited:
+                    connected.add(current)
+                    visited.add(current.id)
+                    # 获取相连的实体ID
+                    connected_ids = self.connections.get(current.id, set())
+                    # 将相连的实体添加到待访问列表
+                    to_visit.extend(
+                        next((e for e in self.entities if e.id == connected_id), None)
+                        for connected_id in connected_ids
+                    )
+            
+            # 检查这组实体是否匹配模式
+            if self._match_entity_group_to_pattern(list(connected), pattern, tolerance):
+                similar_groups.append(list(connected))
+        
+        return similar_groups
+
+    def _is_special_entity(self, entity: EntityInfo, pattern: BlockPattern) -> bool:
+        """判断实体是否具有特殊特征"""
+        # 检查实体类型是否在模式中
+        if entity.entity_type not in pattern.entity_types:
+            return False
+            
+        # 对于INSERT类型，检查block特征
+        if entity.entity_type == 'INSERT':
+            block_features = self.get_block_features(entity.block_name)
+            if block_features is None:
+                return False
+                
+            # 检查尺寸
+            width = block_features['width']
+            if width is not None and not (pattern.width_range[0] <= width <= pattern.width_range[1]):
+                return False
+                
+            height = block_features['height']
+            if height is not None and not (pattern.height_range[0] <= height <= pattern.height_range[1]):
+                return False
+                
+                    
+        return True
+
+    def _find_similar_entity_groups_fallback(self, pattern: BlockPattern, tolerance: float) -> List[List[EntityInfo]]:
+        """当没有找到特殊实体时使用的回退方法"""
+        similar_groups = []
+        visited = set()
+        
         # 遍历所有实体
         for entity in self.entities:
             if entity.id in visited:
@@ -521,7 +594,7 @@ class EntityNetwork:
         
         return similar_groups
     
-    def _match_entity_group_to_pattern(self, entities: List[EntityInfo], pattern: BlockPattern, tolerance: float) -> bool:
+    def _match_entity_group_to_pattern(self, entities: List[EntityInfo], pattern: BlockPattern, tolerance: float, verbose: bool = False) -> bool:
         """检查一组实体是否匹配指定的模式"""
         # 创建临时的复合实体来计算特征
         temp_composite = CompositeEntity(name="temp")
@@ -531,6 +604,8 @@ class EntityNetwork:
         # 获取这组实体的特征
         bbox = temp_composite.get_bounding_box()
         if bbox is None:
+            if verbose:
+                print(f"无法计算边界框")
             return False
             
         # 计算特征
@@ -540,29 +615,43 @@ class EntityNetwork:
         
         # 检查实体数量
         if len(entities) != pattern.entity_count:
+            if verbose:
+                print(f"实体数量不匹配")
             return False
             
         # 检查实体类型
         entity_types = {e.entity_type for e in entities}
         if not pattern.entity_types.issubset(entity_types):
+            if verbose:
+                print(f"实体类型不匹配")
             return False
             
         # 检查尺寸
         if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
+            if verbose:
+                print(f"宽度不匹配")
             return False
             
         if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
+            if verbose:
+                print(f"高度不匹配")
             return False
             
         # 检查宽高比
         if aspect_ratio is not None and pattern.aspect_ratio_range[0] is not None:
             if not (pattern.aspect_ratio_range[0] <= aspect_ratio <= pattern.aspect_ratio_range[1]):
+                if verbose:
+                    print(f"宽高比不匹配")
                 return False
                 
-        # 检查拓扑结构（可选，根据需要添加更多的拓扑检查）
+        # 严格检查拓扑结构
         if not self._check_topology(entities, pattern):
+            if verbose:
+                print(f"拓扑结构不匹配")
             return False
             
+        if verbose:
+            print(f"实体组匹配成功")
         return True
     
     def _check_topology(self, entities: List[EntityInfo], pattern: BlockPattern) -> bool:
@@ -573,7 +662,7 @@ class EntityNetwork:
 
 if __name__ == "__main__":
     # 1. 从源文件提取block模式
-    source_network = EntityNetwork("extracted_blocks/37710.dxf")
+    source_network = EntityNetwork("extracted_blocks/-IVC1.dxf")
     block_patterns = source_network.extract_block_patterns()
     
     if block_patterns:
@@ -588,7 +677,7 @@ if __name__ == "__main__":
             print(f"- 图层: {pattern.layers}")
         
         # 2. 在目标文件中查找匹配的 blocks
-        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-01-T3-2158.dxf")
+        target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
         all_matching_groups = []
         
         for pattern in block_patterns:

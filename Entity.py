@@ -17,6 +17,7 @@ class EntityInfo:
     rotation: float = 0.0  # block 的旋转角度
     scale: tuple = (1.0, 1.0, 1.0)  # block 的缩放因子
     position: tuple = (0.0, 0.0, 0.0)  # block 的插入点
+    #TODO 使用ezdxf内部的uuid
     id: str = field(default_factory=lambda: str(uuid.uuid4()))  # 添加唯一标识符
     
     def __eq__(self, other):

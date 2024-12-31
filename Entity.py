@@ -198,69 +198,35 @@ class EntityNetwork:
             self.update_connections(entity_info)
     
     def update_connections(self, entity_info: EntityInfo):
-        """更新实体之间的连接关系"""
-        tolerance = 0.01  # 连接判断的容差值
-        
+        """更新实体之间的连接关系（改进版）"""
+        tolerance = 0.01
+
         if entity_info.entity_type == 'LINE':
             line = entity_info.dxf_entity
             start_point = Vec3(line.dxf.start)
             end_point = Vec3(line.dxf.end)
-            
+
             for other in self.entities:
                 if other.id == entity_info.id:
                     continue
-                
+
                 if other.entity_type == 'LINE':
                     other_line = other.dxf_entity
                     other_start = Vec3(other_line.dxf.start)
                     other_end = Vec3(other_line.dxf.end)
-                    
-                    # 检查端点是否相连或者非常接近
-                    if (start_point.isclose(other_start, abs_tol=tolerance) or 
-                        start_point.isclose(other_end, abs_tol=tolerance) or
-                        end_point.isclose(other_start, abs_tol=tolerance) or
-                        end_point.isclose(other_end, abs_tol=tolerance)):
+
+                    if (start_point.isclose(other_start, abs_tol=tolerance) or
+                            start_point.isclose(other_end, abs_tol=tolerance) or
+                            end_point.isclose(other_start, abs_tol=tolerance) or
+                            end_point.isclose(other_end, abs_tol=tolerance)):
                         self.add_connection(entity_info, other)
-                        
-                elif other.entity_type == 'CIRCLE':
-                    # 检查线段端点是否在圆上或圆心
-                    circle_center = Vec3(other.dxf_entity.dxf.center)
+                elif other.entity_type in ('CIRCLE', 'ARC'):
+                    center = Vec3(other.dxf_entity.dxf.center)
                     radius = other.dxf_entity.dxf.radius
-                    
-                    # 检查端点到圆心的距离是否等于半径（在圆上）
                     for point in [start_point, end_point]:
-                        dist_to_center = (point - circle_center).magnitude
-                        if abs(dist_to_center - radius) < tolerance:
+                        if (point - center).magnitude < radius + tolerance and (point - center).magnitude > abs(radius - tolerance):
                             self.add_connection(entity_info, other)
                             break
-                            
-                elif other.entity_type == 'ARC':
-                    # 检查线段端点是否在圆弧上
-                    arc_center = Vec3(other.dxf_entity.dxf.center)
-                    radius = other.dxf_entity.dxf.radius
-                    start_angle = other.dxf_entity.dxf.start_angle
-                    end_angle = other.dxf_entity.dxf.end_angle
-                    
-                    for point in [start_point, end_point]:
-                        dist_to_center = (point - arc_center).magnitude
-                        if abs(dist_to_center - radius) < tolerance:
-                            # 检查点是否在圆弧的角度范围内
-                            point_angle = math.degrees(math.atan2(
-                                point.y - arc_center.y,
-                                point.x - arc_center.x
-                            ))
-                            if point_angle < 0:
-                                point_angle += 360
-                                
-                            # 处理跨越0度的情况
-                            if start_angle > end_angle:
-                                is_in_range = point_angle >= start_angle or point_angle <= end_angle
-                            else:
-                                is_in_range = start_angle <= point_angle <= end_angle
-                                
-                            if is_in_range:
-                                self.add_connection(entity_info, other)
-                                break
     
     def add_connection(self, entity1: EntityInfo, entity2: EntityInfo):
         """添加两个实体之间的连接关系"""
@@ -489,77 +455,71 @@ class EntityNetwork:
                     
         return matching_blocks
     
-    def find_similar_entity_groups(self, pattern: BlockPattern, tolerance: float = 0.1) -> List[List[EntityInfo]]:
-        """查找与模式相似的实体组"""
+    def find_similar_entity_groups(self, pattern: BlockPattern, tolerance: float = 0.1, verbose: bool = False) -> List[List[EntityInfo]]:
+        """查找与模式相似的实体组（改进版）"""
         similar_groups = []
         visited = set()
-        
-        # 第一步：找到所有候选的特殊实体
-        special_entities = []
-        for entity in self.entities:
-            # 排除线段
-            if entity.entity_type == 'LINE':
-                continue
-                
-            # 检查实体是否具有特殊特征
-            if self._is_special_entity(entity, pattern):
-                special_entities.append(entity)
-        
-        # 如果没有找到特殊实体，则使用原始方法
-        if not special_entities:
-            return self._find_similar_entity_groups_fallback(pattern, tolerance)
-            
-        # 第二步：从每个特殊实体开始，找到所有相连的实体
+
+        if verbose:
+            print(f"\n开始查找相似实体组，模式特征:")
+            print(f"- 实体数量: {pattern.entity_count}")
+            print(f"- 实体类型: {pattern.entity_types}")
+            print(f"- 宽度范围: {pattern.width_range}")
+            print(f"- 高度范围: {pattern.height_range}")
+            print(f"- 宽高比范围: {pattern.aspect_ratio_range}")
+            print(f"- 图层: {pattern.layers}")
+
+        # 1. 查找所有特殊实体（按优先级排序）
+        def entity_specialness(entity: EntityInfo) -> int:
+            """定义实体特殊性"""
+            if entity.entity_type == 'INSERT' and entity.block_name in [p.name for p in self.extract_block_patterns()]:
+                return 3  # 模式中存在的块实例优先级最高
+            if entity.entity_type not in ('LINE', 'POLYLINE', 'LWPOLYLINE'):
+                return 2  # 非线段实体优先级较高
+            return 1
+
+        special_entities = sorted([e for e in self.entities if e.entity_type in pattern.entity_types], key=entity_specialness, reverse=True)
+
+        if verbose:
+            print(f"找到 {len(special_entities)} 个候选起始实体")
+
+        # 2. 以特殊实体为起点进行扩展
         for special_entity in special_entities:
             if special_entity.id in visited:
                 continue
-                
-            # 从特殊实体开始，找到所有相连的实体
+
             connected = set()
             to_visit = [special_entity]
-            
+
             while to_visit:
                 current = to_visit.pop()
                 if current.id not in visited:
                     connected.add(current)
                     visited.add(current.id)
-                    # 获取相连的实体ID
+
+                    if len(connected) > pattern.entity_count * 2:  # 限制扩展数量，避免无限扩展
+                        break
+
                     connected_ids = self.connections.get(current.id, set())
-                    # 将相连的实体添加到待访问列表
                     to_visit.extend(
                         next((e for e in self.entities if e.id == connected_id), None)
-                        for connected_id in connected_ids
+                        for connected_id in connected_ids if connected_id not in visited
                     )
-            
-            # 检查这组实体是否匹配模式
-            if self._match_entity_group_to_pattern(list(connected), pattern, tolerance):
-                similar_groups.append(list(connected))
-        
-        return similar_groups
 
-    def _is_special_entity(self, entity: EntityInfo, pattern: BlockPattern) -> bool:
-        """判断实体是否具有特殊特征"""
-        # 检查实体类型是否在模式中
-        if entity.entity_type not in pattern.entity_types:
-            return False
-            
-        # 对于INSERT类型，检查block特征
-        if entity.entity_type == 'INSERT':
-            block_features = self.get_block_features(entity.block_name)
-            if block_features is None:
-                return False
-                
-            # 检查尺寸
-            width = block_features['width']
-            if width is not None and not (pattern.width_range[0] <= width <= pattern.width_range[1]):
-                return False
-                
-            height = block_features['height']
-            if height is not None and not (pattern.height_range[0] <= height <= pattern.height_range[1]):
-                return False
-                
-                    
-        return True
+            # 3. 模式匹配
+            if verbose:
+                print(f"\n找到候选实体组，包含 {len(connected)} 个实体")
+                print(f"实体类型分布: {[e.entity_type for e in connected]}")
+                print(f"图层分布: {[e.layer for e in connected]}")
+
+            if self._match_entity_group_to_pattern(list(connected), pattern, tolerance, verbose):
+                if verbose:
+                    print("候选实体组匹配成功")
+                similar_groups.append(list(connected))
+            elif verbose:
+                print("候选实体组匹配失败")
+
+        return similar_groups
 
     def _find_similar_entity_groups_fallback(self, pattern: BlockPattern, tolerance: float) -> List[List[EntityInfo]]:
         """当没有找到特殊实体时使用的回退方法"""
@@ -595,70 +555,52 @@ class EntityNetwork:
         return similar_groups
     
     def _match_entity_group_to_pattern(self, entities: List[EntityInfo], pattern: BlockPattern, tolerance: float, verbose: bool = False) -> bool:
-        """检查一组实体是否匹配指定的模式"""
-        # 创建临时的复合实体来计算特征
+        """检查一组实体是否匹配指定的模式（改进版）"""
+        if verbose:
+            print(f"\n开始匹配实体组，包含 {len(entities)} 个实体")
+            print(f"实体类型分布: {[e.entity_type for e in entities]}")
+            print(f"图层分布: {[e.layer for e in entities]}")
+
+        if len(entities) != pattern.entity_count:
+            if verbose:
+                print(f"实体数量不匹配，需要{pattern.entity_count}, 实际{len(entities)}")
+            return False
+
+        entity_types = {e.entity_type for e in entities}
+        if not pattern.entity_types.issubset(entity_types):
+            if verbose:
+                print(f"实体类型不匹配，需要包含{pattern.entity_types}, 实际包含{entity_types}")
+            return False
+            
+        entity_layers = {e.layer for e in entities}
+        if not any(layer in pattern.layers for layer in entity_layers):
+            if verbose:
+                print(f"图层不匹配，需要在{pattern.layers}其中之一，实际在{entity_layers}")
+            return False
+            
         temp_composite = CompositeEntity(name="temp")
         for entity in entities:
             temp_composite.add_entity(entity)
-            
-        # 获取这组实体的特征
+
         bbox = temp_composite.get_bounding_box()
         if bbox is None:
             if verbose:
                 print(f"无法计算边界框")
             return False
-            
-        # 计算特征
+
         width = bbox[1][0] - bbox[0][0]
         height = bbox[1][1] - bbox[0][1]
         aspect_ratio = width / height if height != 0 else None
-        
-        # 检查实体数量
-        if len(entities) != pattern.entity_count:
-            if verbose:
-                print(f"实体数量不匹配")
-            return False
-            
-        # 检查实体类型
-        entity_types = {e.entity_type for e in entities}
-        if not pattern.entity_types.issubset(entity_types):
-            if verbose:
-                print(f"实体类型不匹配")
-            return False
-            
-        # 检查尺寸
+
         if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
             if verbose:
-                print(f"宽度不匹配")
+                print(f"宽度不匹配，需要在{pattern.width_range}之间，实际为{width}")
             return False
-            
+
         if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
             if verbose:
-                print(f"高度不匹配")
+                print(f"高度不匹配，需要在{pattern.height_range}之间，实际为{height}")
             return False
-            
-        # 检查宽高比
-        if aspect_ratio is not None and pattern.aspect_ratio_range[0] is not None:
-            if not (pattern.aspect_ratio_range[0] <= aspect_ratio <= pattern.aspect_ratio_range[1]):
-                if verbose:
-                    print(f"宽高比不匹配")
-                return False
-                
-        # 严格检查拓扑结构
-        if not self._check_topology(entities, pattern):
-            if verbose:
-                print(f"拓扑结构不匹配")
-            return False
-            
-        if verbose:
-            print(f"实体组匹配成功")
-        return True
-    
-    def _check_topology(self, entities: List[EntityInfo], pattern: BlockPattern) -> bool:
-        """检查实体组的拓扑结构是否匹配模式"""
-        # 这里可以添加更多的拓扑检查逻辑
-        # 例如：检查线段的连接关系、相对位置等
-        return True
 
 if __name__ == "__main__":
     # 1. 从源文件提取block模式

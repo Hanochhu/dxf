@@ -1,4 +1,5 @@
 import ezdxf
+from ezdxf import bbox
 from ezdxf.math import Vec3
 from dataclasses import dataclass, field
 from typing import List, Set, Dict, Optional, Type
@@ -50,20 +51,11 @@ class CompositeEntity:
         max_y = float('-inf')
         
         for entity in self.entities:
-            if entity.entity_type == 'LINE':
-                start = entity.dxf_entity.dxf.start
-                end = entity.dxf_entity.dxf.end
-                min_x = min(min_x, start[0], end[0])
-                min_y = min(min_y, start[1], end[1])
-                max_x = max(max_x, start[0], end[0])
-                max_y = max(max_y, start[1], end[1])
-            elif entity.entity_type == 'CIRCLE':
-                center = entity.dxf_entity.dxf.center
-                radius = entity.dxf_entity.dxf.radius
-                min_x = min(min_x, center[0] - radius)
-                min_y = min(min_y, center[1] - radius)
-                max_x = max(max_x, center[0] + radius)
-                max_y = max(max_y, center[1] + radius)
+            mybbox = bbox.extents([entity.dxf_entity])
+            min_x = min(min_x, mybbox.extmin.x)
+            min_y = min(min_y, mybbox.extmin.y)
+            max_x = max(max_x, mybbox.extmax.x)
+            max_y = max(max_y, mybbox.extmax.y)
                 
         if min_x == float('inf'):
             return None

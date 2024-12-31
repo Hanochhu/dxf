@@ -619,7 +619,8 @@ if __name__ == "__main__":
             print(f"- 图层: {pattern.layers}")
         
         # 2. 在目标文件中查找匹配的 blocks
-        target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
+        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-01-T3-2158.dxf")
+        # target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
         all_matching_groups = []
         
         for pattern in block_patterns:

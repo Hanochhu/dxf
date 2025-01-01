@@ -396,8 +396,8 @@ class EntityNetwork:
         
         return info
     
-    def get_block_features(self, block_name: str) -> Optional[dict]:
-        """获取指定 block 的特征信息"""
+    def get_block_features(self, block_name: str, insert_entity: Optional['ezdxf.entities.Insert'] = None) -> Optional[dict]:
+        """获取指定 block 的特征信息，可以传入 insert 实体来计算真实边界框"""
         if block_name not in self.blocks:
             return None
         
@@ -408,7 +408,9 @@ class EntityNetwork:
             'entity_count': 0,
             'entity_types': set(),
             'layers': set(),
-            'scale': (24.0, 24.0, 24.0), # Default scale
+            'scale': (1.0, 1.0, 1.0),  # 默认为单位缩放
+            'position': (0.0, 0.0, 0.0), # 默认为原点
+            'rotation': 0.0, # 默认为0度
         }
         
         # 创建临时的 CompositeEntity 来存储 block 中的所有实体
@@ -428,7 +430,12 @@ class EntityNetwork:
             features['layers'].add(entity.dxf.layer)
             features['entity_count'] += 1
         
-            
+        # 如果提供了 insert 实体，则使用其缩放、旋转和平移
+        if insert_entity:
+            features['scale'] = (insert_entity.dxf.xscale, insert_entity.dxf.yscale, insert_entity.dxf.zscale)
+            features['position'] = tuple(insert_entity.dxf.insert)
+            features['rotation'] = insert_entity.dxf.rotation
+        
         # 计算边界框
         bbox = temp_composite.get_bounding_box()
         if bbox is None:
@@ -440,11 +447,67 @@ class EntityNetwork:
                 'aspect_ratio': None
             })
         else:
-            # Apply scaling to the bounding box
-            scaled_bbox = (
-                (bbox[0][0] * features['scale'][0], bbox[0][1] * features['scale'][1]),
-                (bbox[1][0] * features['scale'][0], bbox[1][1] * features['scale'][1])
-            )
+            # 应用缩放、旋转和平移到边界框
+            min_x, min_y = bbox[0]
+            max_x, max_y = bbox[1]
+            
+            # 缩放
+            scale_x, scale_y, _ = features['scale']
+            min_x *= scale_x
+            min_y *= scale_y
+            max_x *= scale_x
+            max_y *= scale_y
+            
+            # 旋转
+            rotation = math.radians(features['rotation'])
+            
+            # 创建一个旋转矩阵
+            cos_theta = math.cos(rotation)
+            sin_theta = math.sin(rotation)
+            
+            # 获取中心点
+            center_x = (min_x + max_x) / 2
+            center_y = (min_y + max_y) / 2
+            
+            # 将边界框的四个角点旋转
+            corners = [
+                (min_x, min_y),
+                (max_x, min_y),
+                (max_x, max_y),
+                (min_x, max_y)
+            ]
+            
+            rotated_corners = []
+            for x, y in corners:
+                # 平移到原点
+                x -= center_x
+                y -= center_y
+                
+                # 旋转
+                rotated_x = x * cos_theta - y * sin_theta
+                rotated_y = x * sin_theta + y * cos_theta
+                
+                # 平移回原位
+                rotated_x += center_x
+                rotated_y += center_y
+                
+                rotated_corners.append((rotated_x, rotated_y))
+            
+            # 计算旋转后的边界框
+            rotated_min_x = min(x for x, _ in rotated_corners)
+            rotated_min_y = min(y for _, y in rotated_corners)
+            rotated_max_x = max(x for x, _ in rotated_corners)
+            rotated_max_y = max(y for _, y in rotated_corners)
+            
+            # 平移
+            pos_x, pos_y, _ = features['position']
+            rotated_min_x += pos_x
+            rotated_min_y += pos_y
+            rotated_max_x += pos_x
+            rotated_max_y += pos_y
+            
+            scaled_bbox = ((rotated_min_x, rotated_min_y), (rotated_max_x, rotated_max_y))
+            
             features.update({
                 'bounding_box': scaled_bbox,
                 'width': scaled_bbox[1][0] - scaled_bbox[0][0],
@@ -653,28 +716,39 @@ if __name__ == "__main__":
         # target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
         all_matching_groups = []
         
-        print(target_network.get_block_features("-IVC1"))
-
-    #     for pattern in block_patterns:
-    #         # 查找block引用
-    #         matching_blocks = target_network.find_matching_blocks(pattern)
-    #         all_matching_groups.extend([(block,) for block in matching_blocks])
-            
-    #         # 查找相似的实体组
-    #         similar_groups = target_network.find_similar_entity_groups(pattern)
-    #         all_matching_groups.extend(similar_groups)
         
-    #     print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
-    #     for group in all_matching_groups:
-    #         if len(group) == 1 and group[0].entity_type == 'INSERT':
-    #             block = group[0]
-    #             print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}")
-    #         else:
-    #             bbox = CompositeEntity("temp", list(group)).get_bounding_box()
-    #             center = (
-    #                 (bbox[0][0] + bbox[1][0]) / 2,
-    #                 (bbox[0][1] + bbox[1][1]) / 2
-    #             )
-    #             print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}")
-    # else:
-    #     print("未能提取到任何block模式")
+        for pattern in block_patterns:
+            # 查找block引用
+            matching_blocks = target_network.find_matching_blocks(pattern)
+            all_matching_groups.extend([(block,) for block in matching_blocks])
+            
+            # 查找相似的实体组
+            # similar_groups = target_network.find_similar_entity_groups(pattern)
+            # all_matching_groups.extend(similar_groups)
+        
+        print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
+        for group in all_matching_groups:
+            if len(group) == 1 and group[0].entity_type == 'INSERT':
+                block = group[0]
+                block_features = target_network.get_block_features(block.block_name, block.dxf_entity)
+                if block_features and block_features['bounding_box']:
+                    bbox = block_features['bounding_box']
+                    center = (
+                        (bbox[0][0] + bbox[1][0]) / 2,
+                        (bbox[0][1] + bbox[1][1]) / 2
+                    )
+                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 中心位置={center}, 边界框={bbox}")
+                else:
+                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 无法获取边界框")
+            # else:
+            #     bbox = CompositeEntity("temp", list(group)).get_bounding_box()
+            #     if bbox:
+            #         center = (
+            #             (bbox[0][0] + bbox[1][0]) / 2,
+            #             (bbox[0][1] + bbox[1][1]) / 2
+            #         )
+            #         print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}, 边界框={bbox}")
+            #     else:
+            #         print(f"- 实体组: 实体数量={len(group)}, 无法获取边界框")
+    else:
+        print("未能提取到任何block模式")

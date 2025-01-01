@@ -165,7 +165,7 @@ class TestEntityNetwork(unittest.TestCase):
         # print(f"源文件: {source_dxf}")
         
         # 读取源文件以获取块定义
-        source_doc = ezdxf.readfile(source_dxf)
+        source_doc = ezdxf.readfile(source_dxf, encoding='utf-8')
         # print("成功读取源文件")
         
         # 创建新文件
@@ -275,7 +275,7 @@ class TestEntityNetwork(unittest.TestCase):
         # print(f"\n开始生成预览图: {output_path}")
         # print(f"源DXF文件: {dxf_path}")
         
-        doc = ezdxf.readfile(str(dxf_path))
+        doc = ezdxf.readfile(str(dxf_path), encoding='utf-8')
         msp = doc.modelspace()
         
         fig = plt.figure(figsize=(size[0]/100, size[1]/100), dpi=100)

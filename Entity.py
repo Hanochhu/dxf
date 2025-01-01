@@ -155,7 +155,7 @@ class BlockPattern:
 class EntityNetwork:
     """实体网络类，用于管理实体之间的连接关系"""
     def __init__(self, dxf_path: str):
-        self.doc = ezdxf.readfile(dxf_path)
+        self.doc = ezdxf.readfile(dxf_path, encoding='utf-8')
         self.msp = self.doc.modelspace()
         self.entities: List[EntityInfo] = []
         self.connections: Dict[str, Set[str]] = {}  # 使用 id 作为键

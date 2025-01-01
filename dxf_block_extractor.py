@@ -125,7 +125,7 @@ class DxfBlockExtractor:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             
             # 读取源文件
-            self.doc = ezdxf.readfile(self.source_file)
+            self.doc = ezdxf.readfile(self.source_file, encoding='utf-8')
             self.logger.info(f"成功读取源文件: {self.source_file}")
             
             # 遍历所有块

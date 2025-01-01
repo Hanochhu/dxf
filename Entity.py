@@ -695,41 +695,36 @@ class EntityNetwork:
         #         print(f"高度不匹配，需要在{pattern.height_range}之间，实际为{height}")
         #     return False
 
-if __name__ == "__main__":
-    # 1. 从源文件提取block模式
-    source_network = EntityNetwork("extracted_blocks/A3.dxf")
+def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
+    """
+    从源DXF提取块模式，并在目标DXF中查找匹配的块和实体组。
+
+    Args:
+        source_dxf_path: 源DXF文件的路径。(单个原件)
+        target_dxf_path: 目标DXF文件的路径（整张图）。
+
+    Returns:
+        一个列表，其中包含匹配的块和实体组的信息。
+        每个匹配项都是一个字典，包含以下键：
+        - type: "block" 或 "entity_group"
+        - name: 如果是块，则为块名称；如果是实体组，则为None
+        - position: 如果是块，则为块的位置；如果是实体组，则为None
+        - rotation: 如果是块，则为块的旋转角度；如果是实体组，则为None
+        - center: 匹配项的中心位置
+        - bounding_box: 匹配项的边界框
+    """
+    source_network = EntityNetwork(source_dxf_path)
     block_patterns = source_network.extract_block_patterns()
     
+    all_matching_groups = []
+
     if block_patterns:
-        print(f"提取了 {len(block_patterns)} 个block模式:")
-        for pattern in block_patterns:
-            print(f"\nBlock '{pattern.name}' 的特征:")
-            print(f"- 实体数量: {pattern.entity_count}")
-            print(f"- 实体类型: {pattern.entity_types}")
-            print(f"- 宽度范围: {pattern.width_range}")
-            print(f"- 高度范围: {pattern.height_range}")
-            print(f"- 宽高比范围: {pattern.aspect_ratio_range}")
-            print(f"- 图层: {pattern.layers}")
-        
-        # 2. 在目标文件中查找匹配的 blocks
-        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf")
-        # target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
-        all_matching_groups = []
-        
+        target_network = EntityNetwork(target_dxf_path)
         
         for pattern in block_patterns:
             # 查找block引用
             matching_blocks = target_network.find_matching_blocks(pattern)
-            all_matching_groups.extend([(block,) for block in matching_blocks])
-            
-            # 查找相似的实体组
-            # similar_groups = target_network.find_similar_entity_groups(pattern)
-            # all_matching_groups.extend(similar_groups)
-        
-        print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
-        for group in all_matching_groups:
-            if len(group) == 1 and group[0].entity_type == 'INSERT':
-                block = group[0]
+            for block in matching_blocks:
                 block_features = target_network.get_block_features(block.block_name, block.dxf_entity)
                 if block_features and block_features['bounding_box']:
                     mybbox = block_features['bounding_box']
@@ -737,18 +732,64 @@ if __name__ == "__main__":
                         (mybbox[0][0] + mybbox[1][0]) / 2,
                         (mybbox[0][1] + mybbox[1][1]) / 2
                     )
-                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 中心位置={center}, 边界框={mybbox}")
+                    all_matching_groups.append({
+                        "type": "block",
+                        "name": block.block_name,
+                        "position": block.position,
+                        "rotation": block.rotation,
+                        "center": center,
+                        "bounding_box": mybbox
+                    })
                 else:
-                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 无法获取边界框")
-            # else:
-            #     mybbox = CompositeEntity("temp", list(group)).get_bounding_box()
-            #     if mybbox:
-            #         center = (
-            #             (mybbox[0][0] + mybbox[1][0]) / 2,
-            #             (mybbox[0][1] + mybbox[1][1]) / 2
-            #         )
-            #         print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}, 边界框={mybbox}")
-            #     else:
-            #         print(f"- 实体组: 实体数量={len(group)}, 无法获取边界框")
-    else:
-        print("未能提取到任何block模式")
+                    all_matching_groups.append({
+                        "type": "block",
+                        "name": block.block_name,
+                        "position": block.position,
+                        "rotation": block.rotation,
+                        "center": None,
+                        "bounding_box": None
+                    })
+            
+            # 查找相似的实体组
+            similar_groups = target_network.find_similar_entity_groups(pattern)
+            for group in similar_groups:
+                mybbox = CompositeEntity("temp", list(group)).get_bounding_box()
+                if mybbox:
+                    center = (
+                        (mybbox[0][0] + mybbox[1][0]) / 2,
+                        (mybbox[0][1] + mybbox[1][1]) / 2
+                    )
+                    all_matching_groups.append({
+                        "type": "entity_group",
+                        "name": None,
+                        "position": None,
+                        "rotation": None,
+                        "center": center,
+                        "bounding_box": mybbox
+                    })
+                else:
+                    all_matching_groups.append({
+                        "type": "entity_group",
+                        "name": None,
+                        "position": None,
+                        "rotation": None,
+                        "center": None,
+                        "bounding_box": None
+                    })
+    
+    return all_matching_groups
+
+if __name__ == "__main__":
+    source_dxf = "extracted_blocks/A3.dxf"
+    target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf"
+    
+    matching_results = find_matching_entities(source_dxf, target_dxf)
+    
+    # You can now work with the matching_results list
+    # For example, print the number of matches:
+    print(f"Found {len(matching_results)} matching entities.")
+    
+    # Or iterate through the results:
+    for result in matching_results:
+        print(result)

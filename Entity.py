@@ -321,12 +321,12 @@ class EntityNetwork:
                 
         if 'max_size' in pattern:
             composite = CompositeEntity("temp", list(entities))
-            bbox = composite.get_bounding_box()
-            if bbox is None:
+            mybbox = composite.get_bounding_box()
+            if mybbox is None:
                 return False
             
-            width = bbox[1][0] - bbox[0][0]
-            height = bbox[1][1] - bbox[0][1]
+            width = mybbox[1][0] - mybbox[0][0]
+            height = mybbox[1][1] - mybbox[0][1]
             if width > pattern['max_size'][0] or height > pattern['max_size'][1]:
                 return False
                 
@@ -437,8 +437,8 @@ class EntityNetwork:
             features['rotation'] = insert_entity.dxf.rotation
         
         # 计算边界框
-        bbox = temp_composite.get_bounding_box()
-        if bbox is None:
+        mybbox = temp_composite.get_bounding_box()
+        if mybbox is None:
             features.update({
                 'bounding_box': None,
                 'width': None,
@@ -448,8 +448,8 @@ class EntityNetwork:
             })
         else:
             # 应用缩放、旋转和平移到边界框
-            min_x, min_y = bbox[0]
-            max_x, max_y = bbox[1]
+            min_x, min_y = mybbox[0]
+            max_x, max_y = mybbox[1]
             
             # 缩放
             scale_x, scale_y, _ = features['scale']
@@ -675,14 +675,14 @@ class EntityNetwork:
         for entity in entities:
             temp_composite.add_entity(entity)
 
-        # bbox = temp_composite.get_bounding_box()
-        # if bbox is None:
+        # mybbox = temp_composite.get_bounding_box()
+        # if mybbox is None:
         #     if verbose:
         #         print(f"无法计算边界框")
         #     return False
 
-        # width = bbox[1][0] - bbox[0][0]
-        # height = bbox[1][1] - bbox[0][1]
+        # width = mybbox[1][0] - mybbox[0][0]
+        # height = mybbox[1][1] - mybbox[0][1]
         # aspect_ratio = width / height if height != 0 else None
 
         # if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
@@ -697,7 +697,7 @@ class EntityNetwork:
 
 if __name__ == "__main__":
     # 1. 从源文件提取block模式
-    source_network = EntityNetwork("extracted_blocks/-IVC1.dxf")
+    source_network = EntityNetwork("extracted_blocks/A3.dxf")
     block_patterns = source_network.extract_block_patterns()
     
     if block_patterns:
@@ -732,22 +732,22 @@ if __name__ == "__main__":
                 block = group[0]
                 block_features = target_network.get_block_features(block.block_name, block.dxf_entity)
                 if block_features and block_features['bounding_box']:
-                    bbox = block_features['bounding_box']
+                    mybbox = block_features['bounding_box']
                     center = (
-                        (bbox[0][0] + bbox[1][0]) / 2,
-                        (bbox[0][1] + bbox[1][1]) / 2
+                        (mybbox[0][0] + mybbox[1][0]) / 2,
+                        (mybbox[0][1] + mybbox[1][1]) / 2
                     )
-                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 中心位置={center}, 边界框={bbox}")
+                    print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 中心位置={center}, 边界框={mybbox}")
                 else:
                     print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}, 无法获取边界框")
             # else:
-            #     bbox = CompositeEntity("temp", list(group)).get_bounding_box()
-            #     if bbox:
+            #     mybbox = CompositeEntity("temp", list(group)).get_bounding_box()
+            #     if mybbox:
             #         center = (
-            #             (bbox[0][0] + bbox[1][0]) / 2,
-            #             (bbox[0][1] + bbox[1][1]) / 2
+            #             (mybbox[0][0] + mybbox[1][0]) / 2,
+            #             (mybbox[0][1] + mybbox[1][1]) / 2
             #         )
-            #         print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}, 边界框={bbox}")
+            #         print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}, 边界框={mybbox}")
             #     else:
             #         print(f"- 实体组: 实体数量={len(group)}, 无法获取边界框")
     else:

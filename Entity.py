@@ -52,7 +52,6 @@ class CompositeEntity:
         
         for entity in self.entities:
             mybbox = bbox.extents([entity.dxf_entity])
-            scale_x, scale_y, _ = entity.scale
             min_x = min(min_x, mybbox.extmin.x)
             min_y = min(min_y, mybbox.extmin.y)
             max_x = max(max_x, mybbox.extmax.x)
@@ -408,7 +407,8 @@ class EntityNetwork:
             'entities': [],
             'entity_count': 0,
             'entity_types': set(),
-            'layers': set()
+            'layers': set(),
+            'scale': (24.0, 24.0, 24.0), # Default scale
         }
         
         # 创建临时的 CompositeEntity 来存储 block 中的所有实体
@@ -428,6 +428,7 @@ class EntityNetwork:
             features['layers'].add(entity.dxf.layer)
             features['entity_count'] += 1
         
+            
         # 计算边界框
         bbox = temp_composite.get_bounding_box()
         if bbox is None:
@@ -439,16 +440,21 @@ class EntityNetwork:
                 'aspect_ratio': None
             })
         else:
+            # Apply scaling to the bounding box
+            scaled_bbox = (
+                (bbox[0][0] * features['scale'][0], bbox[0][1] * features['scale'][1]),
+                (bbox[1][0] * features['scale'][0], bbox[1][1] * features['scale'][1])
+            )
             features.update({
-                'bounding_box': bbox,
-                'width': bbox[1][0] - bbox[0][0],
-                'height': bbox[1][1] - bbox[0][1],
+                'bounding_box': scaled_bbox,
+                'width': scaled_bbox[1][0] - scaled_bbox[0][0],
+                'height': scaled_bbox[1][1] - scaled_bbox[0][1],
                 'center': (
-                    (bbox[0][0] + bbox[1][0]) / 2,
-                    (bbox[0][1] + bbox[1][1]) / 2
+                    (scaled_bbox[0][0] + scaled_bbox[1][0]) / 2,
+                    (scaled_bbox[0][1] + scaled_bbox[1][1]) / 2
                 ),
-                'aspect_ratio': (bbox[1][0] - bbox[0][0]) / (bbox[1][1] - bbox[0][1])
-                if bbox[1][1] - bbox[0][1] != 0 else None
+                'aspect_ratio': (scaled_bbox[1][0] - scaled_bbox[0][0]) / (scaled_bbox[1][1] - scaled_bbox[0][1])
+                if scaled_bbox[1][1] - scaled_bbox[0][1] != 0 else None
             })
         
         return features
@@ -462,7 +468,7 @@ class EntityNetwork:
             features = self.get_block_features(block_name)
             if features is not None:
                 pattern = BlockPattern.from_block_features(features, tolerance)
-                if pattern is not None:  # 只添加有效的模式
+                if pattern is not None and block_name != "*Model_Space":  # 只添加有效的模式
                     patterns.append(pattern)
         
         return patterns

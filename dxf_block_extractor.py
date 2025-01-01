@@ -190,7 +190,7 @@ class DxfBlockExtractor:
 if __name__ == "__main__":
     # 创建提取器实例
     extractor = DxfBlockExtractor(
-        source_file="图例和流程图_仪表管件设备均为模块/2308PM-01-T3-2158.dxf",
+        source_file="图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf",
         output_dir="extracted_blocks"
     )
 

@@ -41,7 +41,7 @@ class CompositeEntity:
         self.entities.append(entity)
     
     def get_bounding_box(self) -> Optional[tuple]:
-        """获取复合实体的边界框"""
+        """获取复合实体的边界框，表示的是相对于插入点的坐标，而且是没缩放"""
         if not self.entities:
             return None
             
@@ -52,6 +52,7 @@ class CompositeEntity:
         
         for entity in self.entities:
             mybbox = bbox.extents([entity.dxf_entity])
+            scale_x, scale_y, _ = entity.scale
             min_x = min(min_x, mybbox.extmin.x)
             min_y = min(min_y, mybbox.extmin.y)
             max_x = max(max_x, mybbox.extmax.x)
@@ -363,6 +364,36 @@ class EntityNetwork:
                 'text': entity.dxf.text,
                 'position': tuple(entity.dxf.insert),
             })
+        elif entity_info.entity_type == 'LWPOLYLINE':
+            info.update({
+                'points': [tuple(float(coord) for coord in p) for p in entity.get_points()],
+            })
+        elif entity_info.entity_type == 'POLYLINE':
+            info.update({
+                'points': [tuple(float(coord) for coord in p) for p in entity.points()],
+            })
+        elif entity_info.entity_type == 'ARC':
+            info.update({
+                'center': tuple(entity.dxf.center),
+                'radius': entity.dxf.radius,
+                'start_angle': entity.dxf.start_angle,
+                'end_angle': entity.dxf.end_angle,
+            })
+        elif entity_info.entity_type == 'ELLIPSE':
+            info.update({
+                'center': tuple(entity.dxf.center),
+                'major_axis': tuple(entity.dxf.major_axis),
+                'minor_axis': tuple(entity.dxf.minor_axis),
+            })
+        elif entity_info.entity_type == 'SPLINE':
+            info.update({
+                'control_points': [tuple(p) for p in entity.control_points],
+            })
+        elif entity_info.entity_type == 'MTEXT':
+            info.update({
+                'text': entity.dxf.text,
+                'position': tuple(entity.dxf.insert),
+            })
         
         return info
     
@@ -575,25 +606,25 @@ class EntityNetwork:
         for entity in entities:
             temp_composite.add_entity(entity)
 
-        bbox = temp_composite.get_bounding_box()
-        if bbox is None:
-            if verbose:
-                print(f"无法计算边界框")
-            return False
+        # bbox = temp_composite.get_bounding_box()
+        # if bbox is None:
+        #     if verbose:
+        #         print(f"无法计算边界框")
+        #     return False
 
-        width = bbox[1][0] - bbox[0][0]
-        height = bbox[1][1] - bbox[0][1]
-        aspect_ratio = width / height if height != 0 else None
+        # width = bbox[1][0] - bbox[0][0]
+        # height = bbox[1][1] - bbox[0][1]
+        # aspect_ratio = width / height if height != 0 else None
 
-        if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
-            if verbose:
-                print(f"宽度不匹配，需要在{pattern.width_range}之间，实际为{width}")
-            return False
+        # if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
+        #     if verbose:
+        #         print(f"宽度不匹配，需要在{pattern.width_range}之间，实际为{width}")
+        #     return False
 
-        if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
-            if verbose:
-                print(f"高度不匹配，需要在{pattern.height_range}之间，实际为{height}")
-            return False
+        # if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
+        #     if verbose:
+        #         print(f"高度不匹配，需要在{pattern.height_range}之间，实际为{height}")
+        #     return False
 
 if __name__ == "__main__":
     # 1. 从源文件提取block模式
@@ -612,30 +643,32 @@ if __name__ == "__main__":
             print(f"- 图层: {pattern.layers}")
         
         # 2. 在目标文件中查找匹配的 blocks
-        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-01-T3-2158.dxf")
+        target_network = EntityNetwork("图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf")
         # target_network = EntityNetwork("图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf")
         all_matching_groups = []
         
-        for pattern in block_patterns:
-            # 查找block引用
-            matching_blocks = target_network.find_matching_blocks(pattern)
-            all_matching_groups.extend([(block,) for block in matching_blocks])
+        print(target_network.get_block_features("-IVC1"))
+
+    #     for pattern in block_patterns:
+    #         # 查找block引用
+    #         matching_blocks = target_network.find_matching_blocks(pattern)
+    #         all_matching_groups.extend([(block,) for block in matching_blocks])
             
-            # 查找相似的实体组
-            similar_groups = target_network.find_similar_entity_groups(pattern)
-            all_matching_groups.extend(similar_groups)
+    #         # 查找相似的实体组
+    #         similar_groups = target_network.find_similar_entity_groups(pattern)
+    #         all_matching_groups.extend(similar_groups)
         
-        print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
-        for group in all_matching_groups:
-            if len(group) == 1 and group[0].entity_type == 'INSERT':
-                block = group[0]
-                print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}")
-            else:
-                bbox = CompositeEntity("temp", list(group)).get_bounding_box()
-                center = (
-                    (bbox[0][0] + bbox[1][0]) / 2,
-                    (bbox[0][1] + bbox[1][1]) / 2
-                )
-                print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}")
-    else:
-        print("未能提取到任何block模式")
+    #     print(f"\n找到 {len(all_matching_groups)} 个匹配项:")
+    #     for group in all_matching_groups:
+    #         if len(group) == 1 and group[0].entity_type == 'INSERT':
+    #             block = group[0]
+    #             print(f"- Block引用: 位置={block.position}, 旋转={block.rotation}")
+    #         else:
+    #             bbox = CompositeEntity("temp", list(group)).get_bounding_box()
+    #             center = (
+    #                 (bbox[0][0] + bbox[1][0]) / 2,
+    #                 (bbox[0][1] + bbox[1][1]) / 2
+    #             )
+    #             print(f"- 实体组: 中心位置={center}, 实体数量={len(group)}")
+    # else:
+    #     print("未能提取到任何block模式")

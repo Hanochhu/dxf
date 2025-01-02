@@ -5,6 +5,8 @@
 1. 把 `图例和流程图_仪表管件设备均为模块` 这个文件放在根目录下
 2. 运行 `dxf_block_extractor.py`，提取出所有块
 3. 运行 `Entity.py`，找到匹配的块和实体组。
+4. 运行'block_to_block.py',得到相关信息
+
 
 ## Docker 使用说明
 

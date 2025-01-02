@@ -780,7 +780,7 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
     return all_matching_groups
 
 if __name__ == "__main__":
-    source_dxf = "extracted_blocks/VALLGA.dxf"
+    source_dxf = "extracted_blocks/F1.dxf"
     target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
     # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf"
     

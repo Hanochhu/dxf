@@ -103,7 +103,7 @@ class DxfBlockExtractor:
                 output_file = self.output_dir / f"{clean_name}_{counter}.dxf"
                 counter += 1
             
-            new_doc.saveas(output_file)
+            new_doc.saveas(output_file,encoding='utf-8')
             self.logger.info(f"已保存块 '{block_name}' 到文件: {output_file}")
             return output_file
             

@@ -1,9 +1,18 @@
+try:
+    from shapely.geometry import LineString, box, Point
+    HAS_SHAPELY = True
+except ImportError:
+    HAS_SHAPELY = False
+    print("Warning: shapely package not installed. Please install it using 'pip install shapely'")
+
 from dxf_visualizer import DXFVisualizer
 from Entity import *
-from shapely.geometry import LineString, box, Point
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from shapely.geometry import box
+
+# 全局变量初始化
+intersections = {}
+total_intersected_lines = []
 
 def get_rectangles_info(insert_points_other, target_dxf):
     """
@@ -217,6 +226,168 @@ def find_connected_block_by_line(line_id, visited_lines=None, start_block_name=N
     return block_paths, visited_lines
 
 
+def find_connected_blocks_v2(block_name, block_id, intersections=None, insert_point_closest_line=None, total_intersected_lines=None, start_block_name=None, start_block_id=None):
+    """
+    查找与指定块相关的所有块及其连接的路径和指向关系。
+
+    参数：
+    block_name (str): 初始块的名称
+    block_id (int): 初始块的 ID
+    intersections (dict, optional): 线段相交关系，默认为None
+    insert_point_closest_line (dict, optional): 插入点与最近线段的关系，默认为None
+    total_intersected_lines (list, optional): 所有相交的线段，默认为None
+
+    返回：
+    dict: 包含找到的所有连接块及其详细路径信息的字典
+    """
+    # 初始化默认值
+    if intersections is None:
+        intersections = {}
+    if insert_point_closest_line is None:
+        insert_point_closest_line = {}
+    if total_intersected_lines is None:
+        total_intersected_lines = []
+    # 查找与 block_name 和 block_id 相关的所有 line_id
+    initial_line_ids = find_line_ids_by_block(block_name, block_id)
+
+    if not initial_line_ids:
+        print(f"No lines found for block {block_name}, block_id {block_id}.")
+        return {}  # 如果没有找到任何相关的 line_id，返回空字典
+
+    # 通过栈模拟递归查找与这些 line_id 相关联的块
+    found_blocks = {}  # 存储每个找到的块及其详细信息
+    visited_lines = set()  # 使用 set 来记录已访问的 line_id
+
+    for line_id in initial_line_ids:
+        # 对于每个 line_id，查找是否与其他块连接
+        connected_block_info, visited_lines = find_connected_block_by_line_v2(
+            line_id, visited_lines, start_block_name=block_name, start_block_id=block_id, block_paths=found_blocks,
+            intersections=intersections, insert_point_closest_line=insert_point_closest_line, total_intersected_lines=total_intersected_lines
+        )
+
+        if connected_block_info:
+            # 合并新找到的块信息
+            for block, info in connected_block_info.items():
+                if block not in found_blocks:
+                    found_blocks[block] = []
+                found_blocks[block].extend(info)
+
+    # 处理循环路径并优化返回结构
+    processed_blocks = {}
+    for block, paths in found_blocks.items():
+        unique_paths = []
+        seen_paths = set()
+        
+        for path_info in paths:
+            # 将路径转换为元组以便去重
+            path_tuple = tuple(path_info['path'])
+            if path_tuple not in seen_paths:
+                seen_paths.add(path_tuple)
+                unique_paths.append(path_info)
+        
+        # 按路径长度排序
+        unique_paths.sort(key=lambda x: len(x['path']))
+        
+        # 计算每个路径的详细方向信息
+        detailed_paths = []
+        for path_info in unique_paths:
+            # 根据箭头方向确定连接关系
+            start_block = (start_block_name, start_block_id)
+            target_block = block
+            
+            # 获取箭头方向信息
+            arrow_direction = 'unknown'
+            if path_info['path']:
+                first_line = path_info['path'][0]
+                if first_line in insert_point_closest_line:
+                    rotation = insert_point_closest_line[first_line]['rotation']
+                    if 45 <= rotation < 135:
+                        arrow_direction = 'down'
+                    elif 135 <= rotation < 225:
+                        arrow_direction = 'left'
+                    elif 225 <= rotation < 315:
+                        arrow_direction = 'up'
+                    else:
+                        arrow_direction = 'right'
+
+            detailed_path = {
+                'start_block': start_block,
+                'target_block': target_block,
+                'path': path_info['path'],
+                'direction': path_info['direction'],
+                'arrow_direction': arrow_direction,
+                'length': len(path_info['path']),
+                'start_line': path_info['path'][0],
+                'end_line': path_info['path'][-1]
+            }
+            detailed_paths.append(detailed_path)
+        
+        processed_blocks[block] = detailed_paths
+
+    return processed_blocks
+
+
+def find_connected_block_by_line_v2(line_id, visited_lines=None, start_block_name=None, start_block_id=None,
+                                  block_paths=None, intersections=None, insert_point_closest_line=None, total_intersected_lines=None):
+    if visited_lines is None:
+        visited_lines = set()  # 使用 set 来避免重复访问
+    if block_paths is None:
+        block_paths = {}  # 用于存储块和路径的映射
+    if intersections is None:
+        intersections = {}
+    if insert_point_closest_line is None:
+        insert_point_closest_line = {}
+    if total_intersected_lines is None:
+        total_intersected_lines = []
+
+    # 使用栈来模拟递归
+    stack = [(line_id, [], visited_lines)]  # stack 存储 (当前line_id, 当前路径, 已访问的线段)
+
+    while stack:
+        current_line_id, path, visited_lines = stack.pop()
+        path = path + [current_line_id]  # 更新当前路径
+
+        # 如果该 line_id 已经访问过，跳过
+        if current_line_id in visited_lines:
+            continue
+
+        # 标记当前 line_id 为已访问
+        visited_lines.add(current_line_id)
+
+        # 查找与当前 line_id 相关联的块
+        connected_block = find_block_by_line_id(current_line_id)
+
+        # 如果找到了一个连接的块，并且它不是起始块
+        if connected_block and (connected_block[0] != start_block_name or connected_block[1] != start_block_id):
+            if connected_block not in block_paths:
+                block_paths[connected_block] = []  # 初始化该块的路径列表
+            
+            # Determine direction based on the first line in the path
+            first_line_id = path[0]
+            if first_line_id in find_line_ids_by_block(start_block_name, start_block_id):
+                direction = 'from'
+            else:
+                direction = 'to'
+            
+            block_paths[connected_block].append({
+                'path': path,
+                'direction': direction
+            })  # 记录路径和指向关系
+            continue  # 找到目标块，跳过继续递归
+
+        # 查找与当前 line_id 相交的所有线段
+        intersecting_lines = intersections.get(current_line_id, [])
+
+        # 将所有与当前线段相交的线段压入栈中
+        for intersection in intersecting_lines:
+            intersected_line_id = intersection['line_id']
+            if intersected_line_id not in visited_lines:
+                stack.append((intersected_line_id, path, visited_lines.copy()))  # 使用路径副本，避免影响其他路径
+
+    # 返回最终的块路径和已访问的线段
+    return block_paths, visited_lines
+
+
 # 查找给定 line_id 所属的块
 def find_block_by_line_id(line_id):
     for item in total_intersected_lines:
@@ -374,14 +545,15 @@ if __name__ =="__main__":
     rectangles_info = get_rectangles_info(insert_points_other, file_path)
 
     block_name = 'mis007'
-    block_id = 1
+    block_id = 0
     connected_blocks = find_connected_blocks(block_name, block_id)
     print(connected_blocks)
-
     
+    connected_blocks_v2 = find_connected_blocks_v2(block_name, block_id)
+    print(connected_blocks_v2)
+
     ## 以下变量你可能用得上
     # insert_point_closest_line记录了箭头与线段的关系，箭头 0°是左  90°是下
     # print(insert_point_closest_line)
     # intersections 记录了line与line的相交关系
     # total_intersected_lines 记录了block与line 的相交关系
-

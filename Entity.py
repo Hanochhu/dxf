@@ -9,6 +9,17 @@ import math
 import networkx as nx
 
 @dataclass
+class AttributeInfo:
+    """ATTRIB实体信息类"""
+    tag: str  # 属性标签
+    value: str  # 属性值
+    position: tuple  # 属性位置
+    height: float  # 属性文字高度
+    rotation: float  # 属性旋转角度
+    layer: str  # 属性所在图层
+    style: str  # 属性文字样式
+
+@dataclass
 class EntityInfo:
     """实体信息类"""
     dxf_entity: object  # ezdxf entity
@@ -18,8 +29,33 @@ class EntityInfo:
     rotation: float = 0.0  # block 的旋转角度
     scale: tuple = (1.0, 1.0, 1.0)  # block 的缩放因子
     position: tuple = (0.0, 0.0, 0.0)  # block 的插入点
+    attributes: List[AttributeInfo] = field(default_factory=list)  # 新增：存储ATTRIB实体
     #TODO 使用ezdxf内部的uuid
     id: str = field(default_factory=lambda: str(uuid.uuid4()))  # 添加唯一标识符
+    
+    def add_attribute(self, attrib: 'AttributeInfo'):
+        """添加ATTRIB实体"""
+        self.attributes.append(attrib)
+        
+    def get_attribute(self, tag: str) -> Optional['AttributeInfo']:
+        """根据标签获取ATTRIB实体"""
+        for attrib in self.attributes:
+            if attrib.tag == tag:
+                return attrib
+        return None
+        
+    def get_attribute_value(self, tag: str) -> Optional[str]:
+        """根据标签获取ATTRIB实体的值"""
+        attrib = self.get_attribute(tag)
+        return attrib.value if attrib else None
+        
+    def set_attribute_value(self, tag: str, value: str) -> bool:
+        """设置ATTRIB实体的值"""
+        attrib = self.get_attribute(tag)
+        if attrib:
+            attrib.value = value
+            return True
+        return False
     
     def __eq__(self, other):
         if not isinstance(other, EntityInfo):
@@ -181,14 +217,65 @@ class EntityNetwork:
                     scale=(entity.dxf.xscale, entity.dxf.yscale, entity.dxf.zscale),
                     position=tuple(entity.dxf.insert)
                 )
+                
+                # 加载INSERT实体的属性
+                if hasattr(entity, 'attribs'):
+                    for attrib in entity.attribs:
+                        if attrib.dxftype() == 'ATTRIB':
+                            attrib_info = AttributeInfo(
+                                tag=attrib.dxf.tag,
+                                value=attrib.dxf.text,
+                                position=tuple(attrib.dxf.insert),
+                                height=attrib.dxf.height,
+                                rotation=attrib.dxf.rotation,
+                                layer=attrib.dxf.layer,
+                                style=attrib.dxf.style
+                            )
+                            entity_info.add_attribute(attrib_info)
+                
+                # 添加INSERT实体到entities列表
+                if entity.dxftype() == 'INSERT':
+                    self.entities.append(entity_info)
+                    self.update_connections(entity_info)
             else:
                 entity_info = EntityInfo(
                     dxf_entity=entity,
                     entity_type=entity.dxftype(),
                     layer=entity.dxf.layer
                 )
-            self.entities.append(entity_info)
-            self.update_connections(entity_info)
+                
+                # 加载ATTRIB实体
+                if entity.dxftype() == 'ATTRIB':
+                    attrib_info = AttributeInfo(
+                        tag=entity.dxf.tag,
+                        value=entity.dxf.text,
+                        position=tuple(entity.dxf.insert),
+                        height=entity.dxf.height,
+                        rotation=entity.dxf.rotation,
+                        layer=entity.dxf.layer,
+                        style=entity.dxf.style
+                    )
+                    # 查找对应的INSERT实体并添加属性
+                    insert_entity = next((e for e in self.entities if e.entity_type == 'INSERT' and
+                                        e.dxf_entity.dxf.handle == entity.dxf.owner), None)
+                    if insert_entity:
+                        insert_entity.add_attribute(attrib_info)
+                        continue  # 跳过后续的添加操作
+                    else:
+                        # 如果没有找到对应的INSERT实体，创建一个新的EntityInfo
+                        entity_info = EntityInfo(
+                            dxf_entity=entity,
+                            entity_type='ATTRIB',
+                            layer=entity.dxf.layer
+                        )
+                        entity_info.add_attribute(attrib_info)
+                        self.entities.append(entity_info)
+                        self.update_connections(entity_info)
+                        continue  # 跳过后续的添加操作
+                        
+                # 添加非INSERT和非ATTRIB实体
+                self.entities.append(entity_info)
+                self.update_connections(entity_info)
     
     def update_connections(self, entity_info: EntityInfo):
         """更新实体之间的连接关系（改进版）"""
@@ -732,14 +819,29 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
                         (mybbox[0][0] + mybbox[1][0]) / 2,
                         (mybbox[0][1] + mybbox[1][1]) / 2
                     )
-                    all_matching_groups.append({
+                    result = {
                         "type": "block",
                         "name": block.block_name,
                         "position": block.position,
                         "rotation": block.rotation,
                         "center": center,
                         "bounding_box": mybbox
-                    })
+                    }
+                    # 如果有属性则添加
+                    if block.attributes:
+                        result["attributes"] = [
+                            {
+                                "tag": attr.tag,
+                                "value": attr.value,
+                                "position": attr.position,
+                                "height": attr.height,
+                                "rotation": attr.rotation,
+                                "layer": attr.layer,
+                                "style": attr.style
+                            }
+                            for attr in block.attributes
+                        ]
+                    all_matching_groups.append(result)
                 else:
                     all_matching_groups.append({
                         "type": "block",
@@ -780,7 +882,7 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
     return all_matching_groups
 
 if __name__ == "__main__":
-    source_dxf = "extracted_blocks/F1.dxf"
+    source_dxf = "extracted_blocks/VALLGA.dxf"
     target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
     # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf"
     

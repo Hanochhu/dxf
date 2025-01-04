@@ -1,5 +1,5 @@
 import ezdxf
-from ezdxf import bbox
+from ezdxf import bbox ,AttDef
 from ezdxf.math import Vec3
 from dataclasses import dataclass, field
 from typing import List, Set, Dict, Optional, Type
@@ -30,6 +30,7 @@ class EntityInfo:
     scale: tuple = (1.0, 1.0, 1.0)  # block 的缩放因子
     position: tuple = (0.0, 0.0, 0.0)  # block 的插入点
     attributes: List[AttributeInfo] = field(default_factory=list)  # 新增：存储ATTRIB实体
+    sub_entities: List[str] = field(default_factory=list) # 新增：存储组成实体的ID
     #TODO 使用ezdxf内部的uuid
     id: str = field(default_factory=lambda: str(uuid.uuid4()))  # 添加唯一标识符
     
@@ -87,11 +88,23 @@ class CompositeEntity:
         max_y = float('-inf')
         
         for entity in self.entities:
-            mybbox = bbox.extents([entity.dxf_entity])
-            min_x = min(min_x, mybbox.extmin.x)
-            min_y = min(min_y, mybbox.extmin.y)
-            max_x = max(max_x, mybbox.extmax.x)
-            max_y = max(max_y, mybbox.extmax.y)
+            if entity.entity_type == 'INSERT':
+                # 处理 INSERT 实体，考虑其组成实体
+                for sub_entity_id in entity.sub_entities:
+                    sub_entity = next((e for e in self.entities if e.id == sub_entity_id), None)
+                    if sub_entity and sub_entity.entity_type != 'ATTRIB':  # 过滤掉属性实体
+                        mybbox = bbox.extents([sub_entity.dxf_entity])
+                        min_x = min(min_x, mybbox.extmin.x)
+                        min_y = min(min_y, mybbox.extmin.y)
+                        max_x = max(max_x, mybbox.extmax.x)
+                        max_y = max(max_y, mybbox.extmax.y)
+            else:
+                # 处理普通实体
+                mybbox = bbox.extents([entity.dxf_entity])
+                min_x = min(min_x, mybbox.extmin.x)
+                min_y = min(min_y, mybbox.extmin.y)
+                max_x = max(max_x, mybbox.extmax.x)
+                max_y = max(max_y, mybbox.extmax.y)
                 
         if min_x == float('inf'):
             return None
@@ -237,6 +250,16 @@ class EntityNetwork:
                 if entity.dxftype() == 'INSERT':
                     self.entities.append(entity_info)
                     self.update_connections(entity_info)
+                    # 加载 block 的组成实体
+                    block = self.blocks.get(entity_info.block_name)
+                    if block:
+                        for sub_entity in block:
+                            sub_entity_info = EntityInfo(
+                                dxf_entity=sub_entity,
+                                entity_type=sub_entity.dxftype(),
+                                layer=sub_entity.dxf.layer
+                            )
+                            entity_info.sub_entities.append(sub_entity_info.id)
             else:
                 entity_info = EntityInfo(
                     dxf_entity=entity,
@@ -433,7 +456,19 @@ class EntityNetwork:
                 'rotation': entity_info.rotation,
                 'scale': entity_info.scale,
                 'position': entity_info.position,
-                'block_features': self.get_block_features(entity_info.block_name)
+                'block_features': self.get_block_features(entity_info.block_name),
+                'attributes': [
+                    {
+                        'tag': attr.tag,
+                        'value': attr.value,
+                        'position': attr.position,
+                        'height': attr.height,
+                        'rotation': attr.rotation,
+                        'layer': attr.layer,
+                        'style': attr.style
+                    }
+                    for attr in entity_info.attributes
+                ] if entity_info.attributes else []
             })
         elif entity_info.entity_type == 'LINE':
             info.update({
@@ -883,7 +918,8 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
 
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
-    target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    # target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    target_dxf = "Drawing1.dxf"
     # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf"
     
     matching_results = find_matching_entities(source_dxf, target_dxf)

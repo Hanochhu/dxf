@@ -199,6 +199,7 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
     def load_dxf(self, file_path):
         """加载DXF文件并生成所有图片"""
         try:
+            is_new_file = file_path != self.current_dxf_path
             self.current_dxf_path = file_path
             
             # 获取当前block_name
@@ -211,22 +212,28 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.image_label.configure(text="正在生成图片，请稍候...")
             self.update()
             
-            # 清除之前的图片
-            self.cleanup_previous_images()
-            
-            try:
-                # 生成边界框图片
-                draw_line_bbox_main(file_path)
-            except Exception as e:
-                messagebox.showerror("错误", f"生成边界框图片失败: {str(e)}")
-                return
+            # 如果是新文件，才生成边界框图片
+            if is_new_file:
+                self.cleanup_previous_images()
+                try:
+                    draw_line_bbox_main(file_path)
+                except Exception as e:
+                    messagebox.showerror("错误", f"生成边界框图片失败: {str(e)}")
+                    return
+            else:
+                # 只清除流向图
+                for file in os.listdir():
+                    if file.endswith('.png') and file.startswith('in_out_'):
+                        try:
+                            os.remove(file)
+                        except Exception as e:
+                            print(f"无法删除文件 {file}: {e}")
             
             try:
                 # 生成流向图
                 draw_in_out_main(file_path, block_name)
             except Exception as e:
                 messagebox.showerror("错误", f"生成流向图失败: {str(e)}\n可能是因为找不到指定的Block: {block_name}")
-                # 继续执行，至少显示边界框图片
             
             # 分别收集两种类型的图片
             self.bbox_images = []
@@ -421,11 +428,54 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.update_navigation_buttons()
     
     def reload_with_block(self):
-        """使用新的block_name重新加载图片"""
-        if self.current_dxf_path:
-            self.load_dxf(self.current_dxf_path)
-        else:
+        """使用新的block_name重新加载流向图"""
+        if not self.current_dxf_path:
             messagebox.showwarning("警告", "请先加载DXF文件")
+            return
+        
+        try:
+            # 获取当前block_name
+            block_name = self.block_entry.get().strip()
+            if not block_name:
+                messagebox.showwarning("警告", "请输入Block名称")
+                return
+            
+            # 显示加载提示
+            self.image_label.configure(text="正在生成流向图，请稍候...")
+            self.update()
+            
+            # 只清除流向图
+            for file in os.listdir():
+                if file.endswith('.png') and file.startswith('in_out_'):
+                    try:
+                        os.remove(file)
+                    except Exception as e:
+                        print(f"无法删除文件 {file}: {e}")
+            
+            try:
+                # 只重新生成流向图
+                draw_in_out_main(self.current_dxf_path, block_name)
+            except Exception as e:
+                messagebox.showerror("错误", f"生成流向图失败: {str(e)}\n可能是因为找不到指定的Block: {block_name}")
+                return
+            
+            # 重新收集流向图
+            self.flow_images = []
+            for file in os.listdir():
+                if file.endswith('.png') and file.startswith('in_out_'):
+                    self.flow_images.append(file)
+            
+            self.flow_images.sort()
+            
+            # 如果当前正在显示流向图，则更新显示
+            if self.current_mode == 'flow':
+                self.switch_mode('flow')
+            
+            # 显示成功消息
+            messagebox.showinfo("成功", f"已重新生成流向图: {len(self.flow_images)}张")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"重新加载失败: {str(e)}")
 
 def main():
     app = EntityViewer()

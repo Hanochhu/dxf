@@ -10,6 +10,8 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely.geometry import LineString
+import os
+
 class DXFVisualizer:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -175,7 +177,7 @@ class DXFVisualizer:
 
         return line_info_dict
 
-def visualize_rectangles(rectangles):
+def visualize_rectangles(rectangles, output_dir):
     fig, ax = plt.subplots(figsize=(10, 10))
 
     all_x = []
@@ -217,12 +219,13 @@ def visualize_rectangles(rectangles):
     plt.ylabel('Y')
     plt.title('Visualization of Rectangles')
 
-    # 只保存一张图片，命名为 bbox_all.png
-    plt.savefig('bbox_all.png')  # 保存为 bbox_all.png
-    plt.close()  # 替换 plt.show()
-    print("Saved image as bbox_all.png")
+    # 保存图片到指定文件夹
+    output_path = os.path.join(output_dir, 'bbox_all.png')
+    plt.savefig(output_path)
+    plt.close()
+    print(f"Saved image as {output_path}")
 
-def visualize_rectangles_and_lines(rectangles, lines):
+def visualize_rectangles_and_lines(rectangles, lines, output_dir):
     fig, ax = plt.subplots(figsize=(10, 10))
 
     all_x = []
@@ -280,13 +283,14 @@ def visualize_rectangles_and_lines(rectangles, lines):
     # 显示图例
     ax.legend()
 
-    # 保存为图片，命名为 "line_and_bbox.png"
-    plt.savefig('line_and_bbox.png')  # 保存为 line_and_bbox.png
-    plt.close()  # 替换 plt.show()
-    print("Saved image as line_and_bbox.png")
+    # 保存图片到指定文件夹
+    output_path = os.path.join(output_dir, 'line_and_bbox.png')
+    plt.savefig(output_path)
+    plt.close()
+    print(f"Saved image as {output_path}")
     
 
-def main(file_path):
+def main(file_path, output_dir="output_images"):
     # file_path = "./dxf/Drawing1.dxf"  # 替换为你的 DXF 文件路径
     target_dxf = file_path
     # 创建对象
@@ -410,9 +414,9 @@ def main(file_path):
             rectangles_info.append(rect_info)
     
     # 调用可视化函数
-    visualize_rectangles(rectangles_info) 
+    visualize_rectangles(rectangles_info, output_dir) 
     Lines = lines
-    visualize_rectangles_and_lines(rectangles_info, Lines)
+    visualize_rectangles_and_lines(rectangles_info, Lines, output_dir)
 if __name__ == "__main__":
     file_path = "./dxf/Drawing1.dxf"
     main(file_path)

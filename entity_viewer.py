@@ -26,6 +26,11 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.title("DXF Entity Viewer")
         self.geometry("800x600")
         
+        # 初始化基础变量
+        self.current_zoom = 100
+        self.base_width = 700
+        self.base_height = 500
+        
         # 创建主框架
         self.main_frame = ttk.Frame(self)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -132,19 +137,62 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.block_confirm.pack(side=tk.LEFT)
         
         # 创建固定大小的图片显示框架
-        self.image_frame = ttk.Frame(self.main_frame, height=500, width=700)
-        self.image_frame.pack(pady=10, padx=10)
-        self.image_frame.pack_propagate(False)  # 防止框架大小被内容改变
+        self.image_frame = ttk.Frame(self.main_frame)
+        self.image_frame.pack(fill=tk.BOTH, expand=True, pady=10, padx=10)
         
-        # 创建画布
-        self.canvas = tk.Canvas(self.image_frame, highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # 创建一个容器框架来管理logo和图片区域
+        self.container = ttk.Frame(self.image_frame)
+        self.container.pack(fill=tk.BOTH, expand=True)
+        
+        # 创建logo画布，固定在左侧
+        self.logo_canvas = tk.Canvas(
+            self.container,
+            width=200,
+            height=200,
+            highlightthickness=0
+        )
+        self.logo_canvas.pack(side=tk.LEFT, fill=tk.Y)  # 使用pack布局，固定在左侧
+        
+        # 添加logo
+        try:
+            logo_image = Image.open("logo.jpg")
+            logo_size = (200, 200)
+            logo_image = logo_image.resize(logo_size, Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(logo_image)
+            
+            # 在logo画布上创建logo
+            self.logo_canvas.create_image(
+                0, 0,
+                image=self.logo_photo,
+                anchor='nw'
+            )
+        except Exception as e:
+            print(f"无法加载logo: {e}")
+        
+        # 创建主画布用于显示图片，放在logo右侧
+        self.canvas = tk.Canvas(
+            self.container,
+            highlightthickness=0
+        )
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)  # 填充剩余空间
+        
+        # 创建图片显示框架
+        self.image_container = ttk.Frame(self.canvas)
         
         # 创建图片显示标签
-        self.image_label = ttk.Label(self.canvas)
-        self.image_label.pack(expand=True)
+        self.image_label = ttk.Label(self.image_container)
+        self.image_label.pack(fill=tk.BOTH, expand=True)
         
-        # 初始化变量
+        # 在主画布上创建窗口来显示图片
+        self.image_area = self.canvas.create_window(
+            0, 0,
+            anchor='nw',
+            window=self.image_container,
+            width=500,  # 初始宽度
+            height=500  # 初始高度
+        )
+        
+        # 初始化其他变量
         self.current_dxf_path = None
         self.current_image = None
         self.image_files = []
@@ -153,9 +201,14 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.after_id = None
         
         # 添加缩放相关的实例变量
-        self.current_zoom = 100
-        self.base_width = 700
-        self.base_height = 500
+        self.current_mode = None
+        self.bbox_images = []
+        self.flow_images = []
+        
+        # 添加输出文件夹路径
+        self.output_dir = "output_images"
+        # 确保输出文件夹存在
+        os.makedirs(self.output_dir, exist_ok=True)
         
         # 绑定鼠标滚轮事件到所有相关控件
         for widget in (self.main_frame, self.image_frame, self.canvas, self.image_label):
@@ -168,11 +221,6 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
                     widget.dnd_bind('<<Drop>>', self.handle_drop)
                 except:
                     pass  # 某些控件可能不支持拖放
-        
-        # 在初始化变量部分添加
-        self.current_mode = None
-        self.bbox_images = []
-        self.flow_images = []
         
     def handle_drop(self, event):
         """处理文件拖放"""
@@ -239,12 +287,12 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.bbox_images = []
             self.flow_images = []
             
-            for file in os.listdir():
+            for file in os.listdir(self.output_dir):
                 if file.endswith('.png'):
                     if file.startswith('bbox_') or file.startswith('line_and_bbox'):
-                        self.bbox_images.append(file)
+                        self.bbox_images.append(os.path.join(self.output_dir, file))
                     elif file.startswith('in_out_'):
-                        self.flow_images.append(file)
+                        self.flow_images.append(os.path.join(self.output_dir, file))
             
             # 排序图片文件
             self.bbox_images.sort()
@@ -273,14 +321,14 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.flow_images = []
         self.image_files = []
         
-        for file in os.listdir():
-            if file.endswith('.png') and (file.startswith('bbox_') or 
-                                        file.startswith('line_and_bbox') or 
-                                        file.startswith('in_out_')):
-                try:
-                    os.remove(file)
-                except Exception as e:
-                    print(f"无法删除文件 {file}: {e}")
+        # 清理输出文件夹中的所有图片
+        if os.path.exists(self.output_dir):
+            for file in os.listdir(self.output_dir):
+                if file.endswith('.png'):
+                    try:
+                        os.remove(os.path.join(self.output_dir, file))
+                    except Exception as e:
+                        print(f"无法删除文件 {file}: {e}")
     
     def display_current_image(self):
         """显示当前索引的图片"""
@@ -293,12 +341,20 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             # 打开图片
             image = Image.open(image_path)
             
-            # 计算缩放后的显示尺寸
-            display_width = int(self.base_width * (self.current_zoom / 100))
+            # 计算缩放后的显示尺寸，考虑logo占用的空间
+            logo_width = 240  # logo宽度 + 边距
+            display_width = int((self.base_width - logo_width) * (self.current_zoom / 100))
             display_height = int(self.base_height * (self.current_zoom / 100))
             
             # 更新图片框架大小
-            self.image_frame.configure(width=display_width, height=display_height)
+            self.image_frame.configure(width=self.base_width, height=display_height)
+            
+            # 更新图片显示区域大小
+            self.canvas.itemconfig(
+                self.image_area,
+                width=display_width,
+                height=display_height
+            )
             
             # 保持宽高比缩放
             image_ratio = image.width / image.height
@@ -445,10 +501,10 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.update()
             
             # 只清除流向图
-            for file in os.listdir():
+            for file in os.listdir(self.output_dir):
                 if file.endswith('.png') and file.startswith('in_out_'):
                     try:
-                        os.remove(file)
+                        os.remove(os.path.join(self.output_dir, file))
                     except Exception as e:
                         print(f"无法删除文件 {file}: {e}")
             
@@ -461,9 +517,9 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             
             # 重新收集流向图
             self.flow_images = []
-            for file in os.listdir():
+            for file in os.listdir(self.output_dir):
                 if file.endswith('.png') and file.startswith('in_out_'):
-                    self.flow_images.append(file)
+                    self.flow_images.append(os.path.join(self.output_dir, file))
             
             self.flow_images.sort()
             

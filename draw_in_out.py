@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely.geometry import LineString
 import copy
+import os
+
 class DXFVisualizer:
     def __init__(self, file_path):
         self.file_path = file_path
@@ -737,8 +739,8 @@ def process_block_before(values_before, block_name_id_relationship, max_iteratio
             return process_block_before(values_before, block_name_id_relationship, max_iterations, iteration_count, flow, before_path, after_path)
     
 
-def main(file_path,block_name_start):
-     # 替换为你的 DXF 文件路径
+def main(file_path, block_name_start, output_dir="output_images"):
+    # 替换为你的 DXF 文件路径
     target_dxf = file_path
     # 创建对象
     visualizer = DXFVisualizer(file_path)
@@ -979,14 +981,11 @@ def main(file_path,block_name_start):
         bottom_text = f"Before: {block_name_id_relationship_before}\nAfter: {block_name_id_relationship_after}"
         plt.text(0.5, -0.1, bottom_text, ha='center', va='center', fontsize=10, transform=ax.transAxes)
         
-        # 显示并保存图像
-        plt.gca().set_aspect('equal', adjustable='box')
-        plt.xlabel('X')
-        plt.ylabel('Y')
-        plt.title('Marked and Unmarked Rectangles and Lines')
-        plt.savefig(f'in_out_{block_name}_{block_id}.png', bbox_inches='tight')
-        # plt.show()
-        plt.close()  # 添加这行来关闭图形，而不是显示
+        # 保存图片到指定文件夹
+        output_path = os.path.join(output_dir, f'in_out_{block_name}_{block_id}.png')
+        plt.savefig(output_path, bbox_inches='tight')
+        plt.close()
+
 if __name__ == "__main__":
     global insert_point_closest_line
     global intersections

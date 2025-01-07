@@ -1,4 +1,5 @@
 import ezdxf
+from collections import Counter
 import matplotlib.pyplot as plt
 import math
 from shapely.geometry import Point, LineString
@@ -736,7 +737,7 @@ def process_block_before(values_before, block_name_id_relationship, max_iteratio
             return process_block_before(values_before, block_name_id_relationship, max_iterations, iteration_count, flow, before_path, after_path)
     
 
-def main(file_path,block_names,block_ids):
+def main(file_path,block_name_start):
      # 替换为你的 DXF 文件路径
     target_dxf = file_path
     # 创建对象
@@ -863,121 +864,128 @@ def main(file_path,block_names,block_ids):
                 'bounding_box': (x_min, y_min, x_max, y_max)
             }
             rectangles_info.append(rect_info)
-    # block_name = 'INS07_new'
-    # block_id = 0
-    block_name = block_names
-    block_id = block_ids
-    flow = "both"
-    # block_name = 'mis007'
-    # block_id = 0
-    start_block=(block_name,block_id)
-    block_name_id_relationship = [(block_name,block_id)]
-    before_path =[]
-    after_path = []
-    found_blocks = block_to_path_to_block(block_name,block_id,total_intersected_lines)
-    # 对每个键，保留长度最短的值
-    for key in found_blocks:
-        # 对每个键的列表进行排序，选择最短的列表
-        found_blocks[key] = [min(found_blocks[key], key=len)]
-    print(found_blocks)
-    if found_blocks != 0 :
-    # found_blocks
-        block_name_id_relationship,before_path,after_path = a(found_blocks,insert_point_closest_line,block_name_id_relationship,before_path,after_path,start_block,flow)
-        print(block_name_id_relationship)
+    block_names = [point[3] for point in insert_points_other]
+    block_count = Counter(block_names)
+    print(block_count)
+    print(block_name_start)
+    block_name = block_name_start
+    for block_id in range(block_count.get(block_name, 0)):
+        print(block_id)
+        # block_name = 'INS07_new'
+        # block_id = 0
+        flow = "both"
+        
+        # block_id = 2
+        start_block=(block_name,block_id)
+        block_name_id_relationship = [(block_name,block_id)]
+        before_path =[]
+        after_path = []
+        found_blocks = block_to_path_to_block(block_name,block_id,total_intersected_lines)
+        # 对每个键，保留长度最短的值
+        for key in found_blocks:
+            # 对每个键的列表进行排序，选择最短的列表
+            found_blocks[key] = [min(found_blocks[key], key=len)]
+        print(found_blocks)
+        if found_blocks != 0 :
+        # found_blocks
+            block_name_id_relationship,before_path,after_path = a(found_blocks,insert_point_closest_line,block_name_id_relationship,before_path,after_path,start_block,flow)
+            print(block_name_id_relationship)
+            print(before_path)
+            print(after_path)
+        
+        start_block_index = block_name_id_relationship.index(start_block)
+        values_before = block_name_id_relationship[:start_block_index]
+        values_after = block_name_id_relationship[start_block_index + 1:]
+        # print(values_before)
+        print(values_after)
+        max_iterations = 10  # 设定最大迭代次数，防止死循环
+        iteration_count = 0   
+        block_name_id_relationship_b, before_path, after_path = process_block_before(values_before, block_name_id_relationship, max_iterations, iteration_count=0, flow="before", before_path=before_path, after_path=after_path)    
+        print("jieshu")
+        print(block_name_id_relationship_b)
         print(before_path)
         print(after_path)
-    
-    start_block_index = block_name_id_relationship.index(start_block)
-    values_before = block_name_id_relationship[:start_block_index]
-    values_after = block_name_id_relationship[start_block_index + 1:]
-    # print(values_before)
-    print(values_after)
-    max_iterations = 10  # 设定最大迭代次数，防止死循环
-    iteration_count = 0   
-    block_name_id_relationship_b, before_path, after_path = process_block_before(values_before, block_name_id_relationship, max_iterations, iteration_count=0, flow="before", before_path=before_path, after_path=after_path)    
-    print("jieshu")
-    print(block_name_id_relationship_b)
-    print(before_path)
-    print(after_path)
-    block_name_id_relationship_a, before_path, after_path = process_block_after(values_after, block_name_id_relationship, max_iterations, iteration_count=0, flow="after", before_path=before_path, after_path=after_path)    
-    print("jieshu")
-    print(block_name_id_relationship_a)
-    print(before_path)
-    print(after_path)
-    block_name_id_relationship_before = block_name_id_relationship_b[:-2]
-    block_name_id_relationship_after = block_name_id_relationship_a[2:]
-    block_name_id_relationship_a[1]
-    # 创建图形
-    fig, ax = plt.subplots(figsize=(10, 10))
-    
-    # 绘制矩形框（已标记的为红色，未标记的为黑色）
-    for rect in rectangles_info:
-        x, y = rect['bounding_box'][2], rect['bounding_box'][3]
-        if (rect['name'], rect['id']) in block_name_id_relationship_before:
-            # 已标记的矩形框为红色
-            ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
-                                           rect['bounding_box'][2] - rect['bounding_box'][0],
-                                           rect['bounding_box'][3] - rect['bounding_box'][1],
-                                           linewidth=1, edgecolor='red', facecolor='none', label='In-degree Box'))
-        elif (rect['name'], rect['id']) in block_name_id_relationship_after:
-            # 已标记的矩形框为紫色
-            ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
-                                           rect['bounding_box'][2] - rect['bounding_box'][0],
-                                           rect['bounding_box'][3] - rect['bounding_box'][1],
-                                           linewidth=1, edgecolor='purple', facecolor='none', label='Out-degree Box'))
-        elif (rect['name'], rect['id']) == block_name_id_relationship_a[1]:
-            # 已标记的矩形框为绿色（出发点）
-            ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
-                                           rect['bounding_box'][2] - rect['bounding_box'][0],
-                                           rect['bounding_box'][3] - rect['bounding_box'][1],
-                                           linewidth=1, edgecolor='green', facecolor='none', label='Starting Point'))
-            ax.text(x, y, f'{rect["name"]}', color='green', fontsize=8, ha='center', va='center')
-        else:
-            # 未标记的矩形框为黑色
-            ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
-                                           rect['bounding_box'][2] - rect['bounding_box'][0],
-                                           rect['bounding_box'][3] - rect['bounding_box'][1],
-                                           linewidth=1, edgecolor='black', facecolor='none', label='Unmarked Box'))
-    
-    # 绘制线段（已标记的为橙色，未标记的为灰色）
-    for line in lines:
-        if line['id'] in before_path:
-            x, y = line['geometry'].xy
-            ax.plot(x, y, color='orange', lw=2, label='In-degree Line')  # 已标记的线段为橙色
-        elif line['id'] in after_path:
-            x, y = line['geometry'].xy
-            ax.plot(x, y, color='blue', lw=2, label='Out-degree Line')  # 已标记的线段为蓝色
-        else:
-            x, y = line['geometry'].xy
-            ax.plot(x, y, color='gray', lw=2, label='Unmarked Line')  # 未标记的线段为灰色
-    
-    # 设置轴范围
-    ax.set_xlim(3000, 3400)
-    ax.set_ylim(2200, 2400)
-    
-    # 添加图例
-    handles, labels = ax.get_legend_handles_labels()
-    # 去除重复的标签（因为每次循环都会添加标签）
-    unique_handles = []
-    unique_labels = []
-    for handle, label in zip(handles, labels):
-        if label not in unique_labels:
-            unique_labels.append(label)
-            unique_handles.append(handle)
-    
-    ax.legend(unique_handles, unique_labels, loc='upper right')
-    
-    # 在图像底部添加 block_name_id_relationship_before 和 block_name_id_relationship_after 的内容
-    bottom_text = f"Before: {block_name_id_relationship_before}\nAfter: {block_name_id_relationship_after}"
-    plt.text(0.5, -0.1, bottom_text, ha='center', va='center', fontsize=10, transform=ax.transAxes)
-    
-    # 显示并保存图像
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title('Marked and Unmarked Rectangles and Lines')
-    plt.savefig('out_in.png', bbox_inches='tight')
-    plt.show()
+        block_name_id_relationship_a, before_path, after_path = process_block_after(values_after, block_name_id_relationship, max_iterations, iteration_count=0, flow="after", before_path=before_path, after_path=after_path)    
+        print("jieshu")
+        print(block_name_id_relationship_a)
+        print(before_path)
+        print(after_path)
+        
+        start_index_b = block_name_id_relationship_b.index(start_block)
+        start_index_a = block_name_id_relationship_a.index(start_block)
+        block_name_id_relationship_before = block_name_id_relationship_b[:start_index_b]
+        block_name_id_relationship_after = block_name_id_relationship_a[start_index_a + 1:]
+        # 创建图形
+        fig, ax = plt.subplots(figsize=(10, 10))
+        
+        # 绘制矩形框（已标记的为红色，未标记的为黑色）
+        for rect in rectangles_info:
+            x, y = rect['bounding_box'][2], rect['bounding_box'][3]
+            if (rect['name'], rect['id']) in block_name_id_relationship_before:
+                # 已标记的矩形框为红色
+                ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
+                                               rect['bounding_box'][2] - rect['bounding_box'][0],
+                                               rect['bounding_box'][3] - rect['bounding_box'][1],
+                                               linewidth=1, edgecolor='red', facecolor='none', label='In-degree Box'))
+            elif (rect['name'], rect['id']) in block_name_id_relationship_after:
+                # 已标记的矩形框为紫色
+                ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
+                                               rect['bounding_box'][2] - rect['bounding_box'][0],
+                                               rect['bounding_box'][3] - rect['bounding_box'][1],
+                                               linewidth=1, edgecolor='purple', facecolor='none', label='Out-degree Box'))
+            elif (rect['name'], rect['id']) == start_block:
+                # 已标记的矩形框为绿色（出发点）
+                ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
+                                               rect['bounding_box'][2] - rect['bounding_box'][0],
+                                               rect['bounding_box'][3] - rect['bounding_box'][1],
+                                               linewidth=1, edgecolor='green', facecolor='none', label='Starting Point'))
+                ax.text(x, y, f'{rect["name"]}', color='green', fontsize=8, ha='center', va='center')
+            else:
+                # 未标记的矩形框为黑色
+                ax.add_patch(patches.Rectangle((rect['bounding_box'][0], rect['bounding_box'][1]),
+                                               rect['bounding_box'][2] - rect['bounding_box'][0],
+                                               rect['bounding_box'][3] - rect['bounding_box'][1],
+                                               linewidth=1, edgecolor='black', facecolor='none', label='Unmarked Box'))
+        
+        # 绘制线段（已标记的为橙色，未标记的为灰色）
+        for line in lines:
+            if line['id'] in before_path:
+                x, y = line['geometry'].xy
+                ax.plot(x, y, color='orange', lw=2, label='In-degree Line')  # 已标记的线段为橙色
+            elif line['id'] in after_path:
+                x, y = line['geometry'].xy
+                ax.plot(x, y, color='blue', lw=2, label='Out-degree Line')  # 已标记的线段为蓝色
+            else:
+                x, y = line['geometry'].xy
+                ax.plot(x, y, color='gray', lw=2, label='Unmarked Line')  # 未标记的线段为灰色
+        
+        # 设置轴范围
+        ax.set_xlim(3000, 3400)
+        ax.set_ylim(2150, 2400)
+        
+        # 添加图例
+        handles, labels = ax.get_legend_handles_labels()
+        # 去除重复的标签（因为每次循环都会添加标签）
+        unique_handles = []
+        unique_labels = []
+        for handle, label in zip(handles, labels):
+            if label not in unique_labels:
+                unique_labels.append(label)
+                unique_handles.append(handle)
+        
+        ax.legend(unique_handles, unique_labels, loc='upper right')
+        
+        # 在图像底部添加 block_name_id_relationship_before 和 block_name_id_relationship_after 的内容
+        bottom_text = f"Before: {block_name_id_relationship_before}\nAfter: {block_name_id_relationship_after}"
+        plt.text(0.5, -0.1, bottom_text, ha='center', va='center', fontsize=10, transform=ax.transAxes)
+        
+        # 显示并保存图像
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.title('Marked and Unmarked Rectangles and Lines')
+        plt.savefig(f'in_out_{block_name}_{block_id}.png', bbox_inches='tight')
+        plt.show()
 if __name__ == "__main__":
     global insert_point_closest_line
     global intersections
@@ -985,6 +993,6 @@ if __name__ == "__main__":
     global total_intersected_lines
     global rectangles_info
     file_path = "./dxf/Drawing1.dxf" 
-    block_names = 'INS07_new'
-    block_ids = 0
-    main(file_path,block_names,block_ids)
+    # block_name = 'INS07_new'
+    block_name = 'mis007'
+    main(file_path,block_name)

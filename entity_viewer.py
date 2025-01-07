@@ -110,6 +110,27 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         )
         self.flow_button.pack(side=tk.LEFT, padx=5)
         
+        # 添加block_name输入框架
+        self.block_frame = ttk.Frame(self.button_frame)
+        self.block_frame.pack(side=tk.LEFT, padx=5)
+        
+        # 添加标签
+        self.block_label = ttk.Label(self.block_frame, text="Block名称:")
+        self.block_label.pack(side=tk.LEFT)
+        
+        # 添加输入框
+        self.block_entry = ttk.Entry(self.block_frame, width=10)
+        self.block_entry.pack(side=tk.LEFT, padx=5)
+        self.block_entry.insert(0, 'mis007')  # 设置默认值
+        
+        # 添加确认按钮
+        self.block_confirm = ttk.Button(
+            self.block_frame,
+            text="确认",
+            command=self.reload_with_block
+        )
+        self.block_confirm.pack(side=tk.LEFT)
+        
         # 创建固定大小的图片显示框架
         self.image_frame = ttk.Frame(self.main_frame, height=500, width=700)
         self.image_frame.pack(pady=10, padx=10)
@@ -180,6 +201,12 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         try:
             self.current_dxf_path = file_path
             
+            # 获取当前block_name
+            block_name = self.block_entry.get().strip()
+            if not block_name:
+                messagebox.showwarning("警告", "请输入Block名称")
+                return
+            
             # 显示加载提示
             self.image_label.configure(text="正在生成图片，请稍候...")
             self.update()
@@ -187,9 +214,19 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             # 清除之前的图片
             self.cleanup_previous_images()
             
-            # 生成新的图片
-            draw_line_bbox_main(file_path)  # 生成bbox相关的图片
-            draw_in_out_main(file_path, 'mis007')  # 生成in_out相关的图片
+            try:
+                # 生成边界框图片
+                draw_line_bbox_main(file_path)
+            except Exception as e:
+                messagebox.showerror("错误", f"生成边界框图片失败: {str(e)}")
+                return
+            
+            try:
+                # 生成流向图
+                draw_in_out_main(file_path, block_name)
+            except Exception as e:
+                messagebox.showerror("错误", f"生成流向图失败: {str(e)}\n可能是因为找不到指定的Block: {block_name}")
+                # 继续执行，至少显示边界框图片
             
             # 分别收集两种类型的图片
             self.bbox_images = []
@@ -206,11 +243,18 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.bbox_images.sort()
             self.flow_images.sort()
             
+            if not self.bbox_images and not self.flow_images:
+                messagebox.showerror("错误", "未能生成任何图片")
+                return
+            
             # 默认显示边界框模式
             self.switch_mode('bbox')
             
-            # 显示加载成功消息
-            messagebox.showinfo("成功", f"已成功加载文件: {os.path.basename(file_path)}")
+            # 显示加载成功消息，包含生成图片的数量信息
+            success_msg = f"已成功加载文件: {os.path.basename(file_path)}\n"
+            success_msg += f"生成边界框图片: {len(self.bbox_images)}张\n"
+            success_msg += f"生成流向图: {len(self.flow_images)}张"
+            messagebox.showinfo("成功", success_msg)
             
         except Exception as e:
             messagebox.showerror("错误", f"加载DXF文件失败: {str(e)}")
@@ -356,10 +400,16 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         """切换显示模式"""
         self.current_mode = mode
         if mode == 'bbox':
+            if not self.bbox_images:
+                messagebox.showwarning("警告", "没有可用的边界框图片")
+                return
             self.image_files = self.bbox_images
             self.bbox_button.state(['pressed'])
             self.flow_button.state(['!pressed'])
         else:
+            if not self.flow_images:
+                messagebox.showwarning("警告", "没有可用的流向图，可能是因为找不到指定的Block")
+                return
             self.image_files = self.flow_images
             self.bbox_button.state(['!pressed'])
             self.flow_button.state(['pressed'])
@@ -369,6 +419,13 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             self.current_image_index = 0
             self.display_current_image()
             self.update_navigation_buttons()
+    
+    def reload_with_block(self):
+        """使用新的block_name重新加载图片"""
+        if self.current_dxf_path:
+            self.load_dxf(self.current_dxf_path)
+        else:
+            messagebox.showwarning("警告", "请先加载DXF文件")
 
 def main():
     app = EntityViewer()

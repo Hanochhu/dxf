@@ -186,10 +186,8 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         # 在主画布上创建窗口来显示图片
         self.image_area = self.canvas.create_window(
             0, 0,
-            anchor='nw',
-            window=self.image_container,
-            width=500,  # 初始宽度
-            height=500  # 初始高度
+            anchor='nw',  # 使用左上角作为锚点
+            window=self.image_container
         )
         
         # 初始化其他变量
@@ -341,34 +339,25 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             # 打开图片
             image = Image.open(image_path)
             
-            # 计算缩放后的显示尺寸，考虑logo占用的空间
-            logo_width = 240  # logo宽度 + 边距
-            display_width = int((self.base_width - logo_width) * (self.current_zoom / 100))
-            display_height = int(self.base_height * (self.current_zoom / 100))
-            
-            # 更新图片框架大小
-            self.image_frame.configure(width=self.base_width, height=display_height)
-            
-            # 更新图片显示区域大小
-            self.canvas.itemconfig(
-                self.image_area,
-                width=display_width,
-                height=display_height
-            )
+            # 获取画布当前大小
+            canvas_width = self.canvas.winfo_width()
+            canvas_height = self.canvas.winfo_height()
             
             # 保持宽高比缩放
             image_ratio = image.width / image.height
-            display_ratio = display_width / display_height
+            canvas_ratio = canvas_width / canvas_height
             
-            if image_ratio > display_ratio:
-                new_width = display_width
-                new_height = int(display_width / image_ratio)
+            if image_ratio > canvas_ratio:
+                # 图片比画布更宽，以宽度为基准
+                base_width = min(canvas_width, int(canvas_width * (self.current_zoom / 100)))
+                base_height = int(base_width / image_ratio)
             else:
-                new_height = display_height
-                new_width = int(display_height * image_ratio)
+                # 图片比画布更高，以高度为基准
+                base_height = min(canvas_height, int(canvas_height * (self.current_zoom / 100)))
+                base_width = int(base_height * image_ratio)
             
             # 调整图片大小
-            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            image = image.resize((base_width, base_height), Image.Resampling.LANCZOS)
             
             # 转换为PhotoImage
             photo = ImageTk.PhotoImage(image)
@@ -376,6 +365,18 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             # 更新显示
             self.image_label.configure(image=photo)
             self.image_label.image = photo
+            
+            # 计算居中位置
+            x = (canvas_width - base_width) // 2
+            y = (canvas_height - base_height) // 2
+            
+            # 更新图片容器的位置和大小
+            self.canvas.coords(self.image_area, x, y)
+            self.canvas.itemconfig(
+                self.image_area,
+                width=base_width,
+                height=base_height
+            )
             
         except Exception as e:
             messagebox.showerror("错误", f"显示图片失败: {str(e)}")

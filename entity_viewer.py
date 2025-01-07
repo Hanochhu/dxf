@@ -91,6 +91,25 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.zoom_percent = ttk.Label(self.zoom_frame, text="100%")
         self.zoom_percent.pack(side=tk.LEFT, padx=(5, 0))
         
+        # 添加两个模式按钮的框架
+        self.mode_frame = ttk.Frame(self.button_frame)
+        self.mode_frame.pack(side=tk.LEFT, padx=5)
+        
+        # 添加显示模式按钮
+        self.bbox_button = ttk.Button(
+            self.mode_frame,
+            text="显示边界框",
+            command=lambda: self.switch_mode('bbox')
+        )
+        self.bbox_button.pack(side=tk.LEFT, padx=5)
+        
+        self.flow_button = ttk.Button(
+            self.mode_frame,
+            text="显示流向图",
+            command=lambda: self.switch_mode('flow')
+        )
+        self.flow_button.pack(side=tk.LEFT, padx=5)
+        
         # 创建固定大小的图片显示框架
         self.image_frame = ttk.Frame(self.main_frame, height=500, width=700)
         self.image_frame.pack(pady=10, padx=10)
@@ -128,6 +147,11 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
                     widget.dnd_bind('<<Drop>>', self.handle_drop)
                 except:
                     pass  # 某些控件可能不支持拖放
+        
+        # 在初始化变量部分添加
+        self.current_mode = None
+        self.bbox_images = []
+        self.flow_images = []
         
     def handle_drop(self, event):
         """处理文件拖放"""
@@ -167,21 +191,24 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
             draw_line_bbox_main(file_path)  # 生成bbox相关的图片
             draw_in_out_main(file_path, 'mis007')  # 生成in_out相关的图片
             
-            # 收集所有生成的图片
-            self.image_files = []
+            # 分别收集两种类型的图片
+            self.bbox_images = []
+            self.flow_images = []
+            
             for file in os.listdir():
-                if file.endswith('.png') and (file.startswith('bbox_') or 
-                                            file.startswith('line_and_bbox') or 
-                                            file.startswith('in_out_')):
-                    self.image_files.append(file)
+                if file.endswith('.png'):
+                    if file.startswith('bbox_') or file.startswith('line_and_bbox'):
+                        self.bbox_images.append(file)
+                    elif file.startswith('in_out_'):
+                        self.flow_images.append(file)
             
-            self.image_files.sort()  # 排序图片文件
+            # 排序图片文件
+            self.bbox_images.sort()
+            self.flow_images.sort()
             
-            if self.image_files:
-                self.current_image_index = 0
-                self.display_current_image()
-                self.update_navigation_buttons()
-                
+            # 默认显示边界框模式
+            self.switch_mode('bbox')
+            
             # 显示加载成功消息
             messagebox.showinfo("成功", f"已成功加载文件: {os.path.basename(file_path)}")
             
@@ -190,6 +217,11 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
     
     def cleanup_previous_images(self):
         """清理之前生成的图片"""
+        # 清空图片列表
+        self.bbox_images = []
+        self.flow_images = []
+        self.image_files = []
+        
         for file in os.listdir():
             if file.endswith('.png') and (file.startswith('bbox_') or 
                                         file.startswith('line_and_bbox') or 
@@ -319,6 +351,24 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         self.zoom_scale.set(new_value)
         self.on_zoom_change(new_value)
         return "break"  # 阻止事件继续传播
+    
+    def switch_mode(self, mode):
+        """切换显示模式"""
+        self.current_mode = mode
+        if mode == 'bbox':
+            self.image_files = self.bbox_images
+            self.bbox_button.state(['pressed'])
+            self.flow_button.state(['!pressed'])
+        else:
+            self.image_files = self.flow_images
+            self.bbox_button.state(['!pressed'])
+            self.flow_button.state(['pressed'])
+        
+        # 重置图片索引并显示
+        if self.image_files:
+            self.current_image_index = 0
+            self.display_current_image()
+            self.update_navigation_buttons()
 
 def main():
     app = EntityViewer()

@@ -985,7 +985,7 @@ def main(file_path,block_name_start):
         plt.ylabel('Y')
         plt.title('Marked and Unmarked Rectangles and Lines')
         plt.savefig(f'in_out_{block_name}_{block_id}.png', bbox_inches='tight')
-        plt.show()
+        plt.close()  # 添加这行来关闭图形，而不是显示
 if __name__ == "__main__":
     global insert_point_closest_line
     global intersections

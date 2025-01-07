@@ -219,9 +219,8 @@ def visualize_rectangles(rectangles):
 
     # 只保存一张图片，命名为 bbox_all.png
     plt.savefig('bbox_all.png')  # 保存为 bbox_all.png
+    plt.close()  # 替换 plt.show()
     print("Saved image as bbox_all.png")
-    
-    plt.show()
 
 def visualize_rectangles_and_lines(rectangles, lines):
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -283,10 +282,8 @@ def visualize_rectangles_and_lines(rectangles, lines):
 
     # 保存为图片，命名为 "line_and_bbox.png"
     plt.savefig('line_and_bbox.png')  # 保存为 line_and_bbox.png
+    plt.close()  # 替换 plt.show()
     print("Saved image as line_and_bbox.png")
-    
-    # 显示图像
-    plt.show()
     
 
 def main(file_path):

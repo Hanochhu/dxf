@@ -738,6 +738,29 @@ def process_block_before(values_before, block_name_id_relationship, max_iteratio
             # 递归调用 process_block 处理下一个块
             return process_block_before(values_before, block_name_id_relationship, max_iterations, iteration_count, flow, before_path, after_path)
     
+def get_bounding_box_extrema(rectangles_info):
+    # 提取所有矩形的 bounding_box 信息
+    x_min_values = []
+    y_min_values = []
+    x_max_values = []
+    y_max_values = []
+
+    for rect in rectangles_info:
+        x_min, y_min, x_max, y_max = rect['bounding_box']
+        x_min_values.append(x_min)
+        y_min_values.append(y_min)
+        x_max_values.append(x_max)
+        y_max_values.append(y_max)
+
+    # 获取最小最大值
+    final_x_min = min(x_min_values)
+    final_y_min = min(y_min_values)
+    final_x_max = max(x_max_values)
+    final_y_max = max(y_max_values)
+
+    # 返回结果
+    return final_x_min, final_y_min, final_x_max, final_y_max
+   
 
 def main(file_path, block_name_start, output_dir="output_images"):
     # 替换为你的 DXF 文件路径
@@ -962,8 +985,9 @@ def main(file_path, block_name_start, output_dir="output_images"):
                 ax.plot(x, y, color='gray', lw=2, label='Unmarked Line')  # 未标记的线段为灰色
         
         # 设置轴范围
-        ax.set_xlim(3000, 3400)
-        ax.set_ylim(2150, 2400)
+        final_x_min, final_y_min, final_x_max, final_y_max = get_bounding_box_extrema(rectangles_info)
+        ax.set_xlim(final_x_min, final_x_max)
+        ax.set_ylim(final_y_min-10, final_y_max)
         
         # 添加图例
         handles, labels = ax.get_legend_handles_labels()
@@ -975,16 +999,15 @@ def main(file_path, block_name_start, output_dir="output_images"):
                 unique_labels.append(label)
                 unique_handles.append(handle)
         
-        ax.legend(unique_handles, unique_labels, loc='upper right')
+        ax.legend(unique_handles, unique_labels, loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
         
         # 在图像底部添加 block_name_id_relationship_before 和 block_name_id_relationship_after 的内容
         bottom_text = f"Before: {block_name_id_relationship_before}\nAfter: {block_name_id_relationship_after}"
-        plt.text(0.5, -0.1, bottom_text, ha='center', va='center', fontsize=10, transform=ax.transAxes)
+        plt.text(0.5, -0.15, bottom_text, ha='center', va='center', fontsize=10, transform=ax.transAxes)
         
         # 保存图片到指定文件夹
         output_path = os.path.join(output_dir, f'in_out_{block_name}_{block_id}.png')
         plt.savefig(output_path, bbox_inches='tight')
-        plt.close()
 
 if __name__ == "__main__":
     global insert_point_closest_line

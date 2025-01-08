@@ -147,8 +147,7 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         # 创建logo画布，固定在左侧
         self.logo_canvas = tk.Canvas(
             self.container,
-            width=200,
-            height=200,
+            width=400,  # 设置最大宽度
             highlightthickness=0
         )
         self.logo_canvas.pack(side=tk.LEFT, fill=tk.Y)  # 使用pack布局，固定在左侧
@@ -156,15 +155,24 @@ class EntityViewer(TkinterDnD.Tk if USE_DND else tk.Tk):
         # 添加logo
         try:
             logo_image = Image.open("logo.jpg")
-            logo_size = (200, 200)
-            logo_image = logo_image.resize(logo_size, Image.Resampling.LANCZOS)
+            # 计算等比例缩放后的尺寸
+            aspect_ratio = logo_image.height / logo_image.width
+            logo_width = 400  # 固定宽度
+            logo_height = int(logo_width * aspect_ratio)  # 按比例计算高度
+            
+            # 调整画布高度以匹配图片
+            self.logo_canvas.configure(height=logo_height)
+            
+            # 等比例缩放图片
+            logo_image = logo_image.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
             self.logo_photo = ImageTk.PhotoImage(logo_image)
             
             # 在logo画布上创建logo
             self.logo_canvas.create_image(
-                0, 0,
+                logo_width//2,  # 水平居中
+                logo_height//2,  # 垂直居中
                 image=self.logo_photo,
-                anchor='nw'
+                anchor='center'  # 使用中心点作为锚点
             )
         except Exception as e:
             print(f"无法加载logo: {e}")

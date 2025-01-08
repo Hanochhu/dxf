@@ -986,8 +986,8 @@ def main(file_path, block_name_start, output_dir="output_images"):
         
         # 设置轴范围
         final_x_min, final_y_min, final_x_max, final_y_max = get_bounding_box_extrema(rectangles_info)
-        ax.set_xlim(final_x_min, final_x_max)
-        ax.set_ylim(final_y_min-10, final_y_max)
+        ax.set_xlim(final_x_min-10, final_x_max+10)
+        ax.set_ylim(final_y_min-10, final_y_max+10)
         
         # 添加图例
         handles, labels = ax.get_legend_handles_labels()

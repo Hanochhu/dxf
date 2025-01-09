@@ -129,22 +129,22 @@ class BlockPattern:
         if not self.entity_types.issubset(features['entity_types']):
             return False
 
-        # 检查图层
-        if not any(layer in self.layers for layer in features['layers']):
-            return False
+        # # 检查图层
+        # if not any(layer in self.layers for layer in features['layers']):
+        #     return False
 
         # 检查实体数量
         if self.entity_count != features['entity_count']:
             return False
 
-        # 检查尺寸
-        width = features.get('width')
-        if width is not None and not (self.width_range[0] <= width <= self.width_range[1]):
-            return False
+        # # 检查尺寸
+        # width = features.get('width')
+        # if width is not None and not (self.width_range[0] <= width <= self.width_range[1]):
+        #     return False
 
-        height = features.get('height')
-        if height is not None and not (self.height_range[0] <= height <= self.height_range[1]):
-            return False
+        # height = features.get('height')
+        # if height is not None and not (self.height_range[0] <= height <= self.height_range[1]):
+        #     return False
 
         aspect_ratio = features.get('aspect_ratio')
         if aspect_ratio is not None and not (self.aspect_ratio_range[0] <= aspect_ratio <= self.aspect_ratio_range[1]):
@@ -343,7 +343,10 @@ class EntityNetwork:
             return 1
 
         special_entities = sorted(
-            [e for e in self.entities if e.entity_type in pattern.entity_types], key=entity_specialness, reverse=True)
+            [e for e in self.entities if e.entity_type in pattern.entity_types], 
+            key=entity_specialness, 
+            reverse=True
+        )
 
         # 2. 以特殊实体为起点进行扩展
         for special_entity in special_entities:
@@ -359,52 +362,50 @@ class EntityNetwork:
                     connected.add(current)
                     visited.add(current.id)
 
-                    if len(connected) > pattern.entity_count * 2:  # 限制扩展数量，避免无限扩展
+                    # 限制扩展数量，避免无限扩展
+                    if len(connected) > pattern.entity_count * 2:
                         break
 
+                    # 获取相连实体
                     connected_ids = self.connections.get(current.id, set())
                     to_visit.extend(
                         next((e for e in self.entities if e.id == connected_id), None)
-                        for connected_id in connected_ids if connected_id not in visited
+                        for connected_id in connected_ids 
+                        if connected_id not in visited
                     )
 
-            # 3. 模式匹配
-            if self._match_entity_group_to_pattern(list(connected), pattern, tolerance):
-                similar_groups.append(EntityGroup(
-                    name=f"EntityGroup_{len(similar_groups)}",
-                    entities=list(connected)
-                ))
+                # 如果当前连通分量的实体数量等于目标数量，检查是否匹配
+                if len(connected) == pattern.entity_count:
+                    if self._match_entity_group_to_pattern(list(connected), pattern, tolerance):
+                        similar_groups.append(EntityGroup(
+                            name=f"EntityGroup_{len(similar_groups)}",
+                            entities=list(connected)
+                        ))
+                    break
 
         return similar_groups
 
     def _match_entity_group_to_pattern(self, entities: List[EntityInfo], pattern: BlockPattern, tolerance: float) -> bool:
         """检查一组实体是否匹配指定的模式（改进版）"""
+        # 检查实体数量
         if len(entities) != pattern.entity_count:
             return False
 
+        # 检查实体类型
         entity_types = {e.entity_type for e in entities}
         if not pattern.entity_types.issubset(entity_types):
             return False
 
-        entity_layers = {e.layer for e in entities}
-        if not any(layer in pattern.layers for layer in entity_layers):
-            return False
-
-        # 创建临时 EntityGroup 来计算边界框
-        temp_group = EntityGroup(name="temp", entities=entities)
-        mybbox = self.get_bounding_box(temp_group.entities)
-        if mybbox is None:
-            return False
-
-        width = mybbox[1][0] - mybbox[0][0]
-        height = mybbox[1][1] - mybbox[0][1]
-        aspect_ratio = width / height if height != 0 else None
-
-        if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
-            return False
-
-        if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
-            return False
+        # 检查长宽比
+        mybbox = self.get_bounding_box(entities)
+        if mybbox is not None:  # 只在能获取到边界框时进行长宽比检查
+            width = mybbox[1][0] - mybbox[0][0]
+            height = mybbox[1][1] - mybbox[0][1]
+          
+            if height != 0:
+                aspect_ratio = width / height
+                if not (pattern.aspect_ratio_range[0] <= aspect_ratio <= pattern.aspect_ratio_range[1]):
+                    return False
 
         return True
 
@@ -510,7 +511,7 @@ class EntityNetwork:
                 layer=entity.dxf.layer
             )
             entities.append(entity_info)
-            
+          
             # 收集实体信息
             features['entities'].append(self.get_entity_info(entity_info))
             features['entity_types'].add(entity.dxftype())
@@ -645,10 +646,10 @@ class EntityNetwork:
 
         # 定义需要过滤的实体类型
         filter_types = {'ATTRIB', 'ATTDEF'}
-        
+      
         # 收集所有需要处理的实体
         entities_to_process = []
-        
+      
         for entity in entities:
             if entity.entity_type == 'INSERT':
                 # 查找并处理所有子实体
@@ -658,11 +659,11 @@ class EntityNetwork:
                         entities_to_process.append(sub_entity.dxf_entity)
             elif entity.entity_type not in filter_types:
                 entities_to_process.append(entity.dxf_entity)
-        
+      
         # 如果没有实体需要处理，返回 None
         if not entities_to_process:
             return None
-            
+          
         # 一次性处理所有实体
         mybbox = bbox.extents(entities_to_process)
         return ((mybbox.extmin.x, mybbox.extmin.y), 
@@ -772,9 +773,9 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
 
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
-    # target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
     # target_dxf = "Drawing1.dxf"
-    target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
+    # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
 
     matching_results = find_matching_entities(source_dxf, target_dxf)
 

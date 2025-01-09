@@ -390,23 +390,21 @@ class EntityNetwork:
         if not any(layer in pattern.layers for layer in entity_layers):
             return False
 
-        temp_composite = CompositeEntity(name="temp")
-        for entity in entities:
-            temp_composite.add_entity(entity)
+        # 创建临时 EntityGroup 来计算边界框
+        temp_group = EntityGroup(name="temp", entities=entities)
+        mybbox = self.get_bounding_box(temp_group.entities)
+        if mybbox is None:
+            return False
 
-        # mybbox = temp_composite.get_bounding_box()
-        # if mybbox is None:
-        #     return False
+        width = mybbox[1][0] - mybbox[0][0]
+        height = mybbox[1][1] - mybbox[0][1]
+        aspect_ratio = width / height if height != 0 else None
 
-        # width = mybbox[1][0] - mybbox[0][0]
-        # height = mybbox[1][1] - mybbox[0][1]
-        # aspect_ratio = width / height if height != 0 else None
+        if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
+            return False
 
-        # if not (pattern.width_range[0] <= width <= pattern.width_range[1]):
-        #     return False
-
-        # if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
-        #     return False
+        if not (pattern.height_range[0] <= height <= pattern.height_range[1]):
+            return False
 
         return True
 
@@ -745,8 +743,7 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
             # 查找相似的实体组
             similar_groups = target_network.find_similar_entity_groups(pattern)
             for group in similar_groups:
-                mybbox = CompositeEntity(
-                    "temp", list(group)).get_bounding_box()
+                mybbox = target_network.get_bounding_box(group.entities)
                 if mybbox:
                     center = (
                         (mybbox[0][0] + mybbox[1][0]) / 2,
@@ -776,8 +773,8 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
     # target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
-    target_dxf = "Drawing1.dxf"
-    # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-01-T3-2158.dxf"
+    # target_dxf = "Drawing1.dxf"
+    target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
 
     matching_results = find_matching_entities(source_dxf, target_dxf)
 

@@ -780,16 +780,99 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
 
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
-    # target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
-    # target_dxf = "Drawing1.dxf"
-    target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
+    module_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    line_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
 
-    matching_results = find_matching_entities(source_dxf, target_dxf)
+    # 首先获取模块版本的位置信息作为参考
+    print("\n=== 获取模块版本的位置信息 ===")
+    module_results = find_matching_entities(source_dxf, module_dxf)
+    module_positions = []
+    
+    for match in module_results:
+        if match["type"] == "block":
+            center = None
+            if match.get("bounding_box"):
+                mybbox = match["bounding_box"]
+                center = (
+                    (mybbox[0][0] + mybbox[1][0]) / 2,
+                    (mybbox[0][1] + mybbox[1][1]) / 2
+                )
+            elif match.get("position"):
+                center = match["position"][:2]  # 只取x,y坐标
+                
+            if center:
+                module_positions.append({
+                    "center": center,
+                    "rotation": match.get("rotation", 0),
+                    "name": match.get("name", "unknown")
+                })
+    
+    print(f"\n找到 {len(module_positions)} 个模块位置:")
+    for i, pos in enumerate(module_positions, 1):
+        print(f"{i}. 中心点: ({pos['center'][0]:.2f}, {pos['center'][1]:.2f}), "
+              f"旋转: {pos['rotation']:.2f}°")
 
-    # You can now work with the matching_results list
-    # For example, print the number of matches:
-    print(f"Found {len(matching_results)} matching entities.")
+    # 然后检查线条版本的聚类结果
+    print("\n=== 检查线条版本的聚类结果 ===")
+    line_results = find_matching_entities(source_dxf, line_dxf)
+    line_positions = []
+    
+    for match in line_results:
+        if match["type"] == "entity_group" and match.get("center"):
+            line_positions.append({
+                "center": match["center"],
+                "bbox": match.get("bounding_box")
+            })
+    
+    print(f"\n找到 {len(line_positions)} 个线条聚类组")
 
-    # Or iterate through the results:
-    for result in matching_results:
-        print(result)
+    # 比对位置匹配情况
+    print("\n=== 位置匹配分析 ===")
+    tolerance = 1.0  # 位置匹配的容差值（单位：图纸单位）
+    matched_modules = set()
+    matched_lines = set()
+    
+    for i, mod_pos in enumerate(module_positions):
+        found_match = False
+        best_distance = float('inf')
+        best_match = None
+        
+        for j, line_pos in enumerate(line_positions):
+            if j in matched_lines:
+                continue
+                
+            dx = mod_pos["center"][0] - line_pos["center"][0]
+            dy = mod_pos["center"][1] - line_pos["center"][1]
+            distance = (dx*dx + dy*dy) ** 0.5
+            
+            if distance < tolerance and distance < best_distance:
+                best_distance = distance
+                best_match = (j, line_pos, distance)
+                found_match = True
+        
+        if found_match:
+            j, line_pos, distance = best_match
+            matched_modules.add(i)
+            matched_lines.add(j)
+            print(f"\n匹配 #{i+1}:")
+            print(f"模块: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
+            print(f"线条: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")
+            print(f"距离: {distance:.2f}")
+        else:
+            print(f"\n未匹配模块 #{i+1}:")
+            print(f"位置: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
+
+    # 输出统计信息
+    print("\n=== 匹配统计 ===")
+    print(f"模块总数: {len(module_positions)}")
+    print(f"线条聚类组总数: {len(line_positions)}")
+    print(f"成功匹配数: {len(matched_modules)}")
+    print(f"未匹配模块数: {len(module_positions) - len(matched_modules)}")
+    print(f"未匹配线条组数: {len(line_positions) - len(matched_lines)}")
+    
+    # 检查未匹配的线条组
+    if len(line_positions) - len(matched_lines) > 0:
+        print("\n未匹配的线条组位置:")
+        for j, line_pos in enumerate(line_positions):
+            if j not in matched_lines:
+                print(f"组 #{j+1}: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")

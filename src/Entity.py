@@ -502,16 +502,23 @@ class EntityNetwork:
             'rotation': 0.0,  # 默认为0度
         }
 
+        # 定义需要过滤的实体类型
+        filter_types = {'ATTRIB', 'ATTDEF'}
+
         # 收集所有实体信息
         entities = []
         for entity in block:
+            # 跳过属性类实体
+            if entity.dxftype() in filter_types:
+                continue
+            
             entity_info = EntityInfo(
                 dxf_entity=entity,
                 entity_type=entity.dxftype(),
                 layer=entity.dxf.layer
             )
             entities.append(entity_info)
-          
+            
             # 收集实体信息
             features['entities'].append(self.get_entity_info(entity_info))
             features['entity_types'].add(entity.dxftype())
@@ -773,9 +780,9 @@ def find_matching_entities(source_dxf_path: str, target_dxf_path: str) -> list:
 
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
-    target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    # target_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
     # target_dxf = "Drawing1.dxf"
-    # target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
+    target_dxf = "图例和流程图_仪表管件设备均为普通线条/2308PM-09-T3-2900.dxf"
 
     matching_results = find_matching_entities(source_dxf, target_dxf)
 

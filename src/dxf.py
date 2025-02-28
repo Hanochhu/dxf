@@ -1,94 +1,77 @@
+import ezdxf
+from tqdm import tqdm
 from abc import ABC, abstractmethod
-from tqdm import tqdm  # 导入 tqdm 库
+import matplotlib.pyplot as plt
 
 class DXFFile:
     def __init__(self, filename):
         self.filename = filename
-        self.header = Header()
-        self.tables = Tables()
-        self.blocks = []
         self.entities = []
+        self.blocks = {}
 
     def parse(self):
-        with open(self.filename, 'r') as file:
-            current_section = None
-            lines = file.readlines()  # 读取所有行
-            total_lines = len(lines)   # 获取总行数
+        # 使用 ezdxf 读取 DXF 文件
+        doc = ezdxf.readfile(self.filename)
+        
+        # 解析块定义
+        for block in doc.blocks:
+            self.blocks[block.name] = block
 
-            for line in tqdm(lines, total=total_lines, desc="Parsing DXF File"):
-                line = line.strip()
-                if line.startswith('0'):
-                    current_section = line[2:]  # 获取当前部分
-                elif current_section == 'HEADER':
-                    self.header.parse(line)
-                elif current_section == 'TABLES':
-                    self.tables.parse(line)
-                elif current_section == 'BLOCKS':
-                    block = Block().parse(line)
-                    if block:
-                        self.blocks.append(block)
-                elif current_section == 'ENTITIES':
-                    entity = EntityFactory.create_entity(line)
-                    if entity:
-                        self.entities.append(entity)
+        # 解析模型空间中的所有线、圆和块引用
+        for entity in tqdm(doc.modelspace().query('LINE CIRCLE INSERT'), desc="Parsing Entities"):
+            self.entities.append(entity)
 
     def generate_output(self, output_filename):
         with open(output_filename, 'w') as output_file:
             output_file.write("DXF File Information:\n")
-            output_file.write(f"Header:\n  ACAD Version: {self.header.acad_version}\n")
-            output_file.write(f"  Insert Base: {self.header.ins_base}\n")
-            output_file.write("Tables:\n")
-            for layer in self.tables.layers:
-                output_file.write(f"  Layer: {layer.name}, Color: {layer.color}\n")
-            output_file.write("Blocks:\n")
-            for block in self.blocks:
-                output_file.write(f"  Block: {block.name}\n")
-            output_file.write("Entities:\n")
-            for entity in self.entities:
-                output_file.write(f"  {entity}\n")
+            
+            # 首先记录普通块的定义（排除 Model_Space）
+            output_file.write("\nBlock Definitions:\n")
+            for block_name, block in self.blocks.items():
+                if block_name != '*Model_Space':  # 跳过 Model_Space
+                    output_file.write(f"  Block '{block_name}':\n")
+                    # 打印所有实体类型，帮助调试
+                    entity_types = set(entity.dxftype() for entity in block)
+                    if entity_types:
+                        output_file.write(f"    Entity types in block: {entity_types}\n")
+                    
+                    for entity in block:
+                        if entity.dxftype() == 'LINE':
+                            start = entity.dxf.start
+                            end = entity.dxf.end
+                            output_file.write(f"    Line from {start} to {end}\n")
+                        elif entity.dxftype() == 'CIRCLE':
+                            center = entity.dxf.center
+                            radius = entity.dxf.radius
+                            output_file.write(f"    Circle at {center} with radius {radius}\n")
+                        # ... 其他实体类型的处理 ...
+                        elif entity.dxftype() == 'INSERT':
+                            name = entity.dxf.name
+                            insertion_point = entity.dxf.insert
+                            output_file.write(f"    Nested block '{name}' at {insertion_point}\n")
 
-class Header:
-    def __init__(self):
-        self.acad_version = None
-        self.ins_base = None
-
-    def parse(self, line):
-        if line.startswith('$ACADVER'):
-            self.acad_version = line.split(' ')[1]
-        elif line.startswith('$INSBASE'):
-            self.ins_base = line.split(' ')[1]
-
-class Tables:
-    def __init__(self):
-        self.layers = []
-
-    def parse(self, line):
-        if line.startswith('LAYER'):
-            layer = Layer().parse(line)
-            if layer:
-                self.layers.append(layer)
-
-class Layer:
-    def __init__(self):
-        self.name = None
-        self.color = None
-
-    def parse(self, line):
-        # 解析图层信息
-        # 这里需要根据具体的格式解析
-        self.name = line.split(' ')[1]  # 示例解析
-        self.color = line.split(' ')[2]  # 示例解析
-        return self
-
-class Block:
-    def __init__(self, name):
-        self.name = name
-        self.entities = []
-
-    @classmethod
-    def parse(cls, line):
-        # 解析块信息
-        return cls(name=line)
+            # 然后记录 Model_Space 的内容
+            output_file.write("\nModel Space Contents:\n")
+            if '*Model_Space' in self.blocks:
+                model_space = self.blocks['*Model_Space']
+                entity_types = set(entity.dxftype() for entity in model_space)
+                if entity_types:
+                    output_file.write(f"  Entity types in Model Space: {entity_types}\n")
+                
+                for entity in model_space:
+                    if entity.dxftype() == 'LINE':
+                        start = entity.dxf.start
+                        end = entity.dxf.end
+                        output_file.write(f"  Line from {start} to {end}\n")
+                    elif entity.dxftype() == 'CIRCLE':
+                        center = entity.dxf.center
+                        radius = entity.dxf.radius
+                        output_file.write(f"  Circle at {center} with radius {radius}\n")
+                    # ... 其他实体类型的处理 ...
+                    elif entity.dxftype() == 'INSERT':
+                        name = entity.dxf.name
+                        insertion_point = entity.dxf.insert
+                        output_file.write(f"  Block '{name}' at {insertion_point}\n")
 
 class Entity(ABC):
     @abstractmethod
@@ -121,41 +104,54 @@ class Circle(Entity):
     def __str__(self):
         return f"Circle at {self.center} with radius {self.radius}"
 
-class EntityFactory:
-    @staticmethod
-    def create_entity(line):
-        if line.startswith('LINE'):
-            start_point = (0, 0)  # 示例值，实际解析时应提取
-            end_point = (1, 1)    # 示例值，实际解析时应提取
-            return Line(start_point, end_point)
-        elif line.startswith('CIRCLE'):
-            center = (0, 0)  # 示例值，实际解析时应提取
-            radius = 1       # 示例值，实际解析时应提取
-            return Circle(center, radius)
-        return None
-
 class Drawing:
-    def __init__(self):
-        self.entities = []
-
-    def add_entity(self, entity):
-        self.entities.append(entity)
+    def __init__(self, entities, blocks):
+        self.entities = entities
+        self.blocks = blocks
 
     def draw(self):
+        plt.figure(figsize=(8, 8))  # 创建一个绘图窗口
         for entity in tqdm(self.entities, desc="Drawing Entities"):
-            if isinstance(entity, Line):
+            if entity.dxftype() == 'LINE':
                 self.draw_line(entity)
-            elif isinstance(entity, Circle):
+            elif entity.dxftype() == 'CIRCLE':
                 self.draw_circle(entity)
+            elif entity.dxftype() == 'INSERT':
+                self.draw_block(entity)  # 处理块引用
+        plt.axis('equal')  # 设置坐标轴比例相等
+        plt.title("DXF Entities Visualization")
+        plt.xlabel("X-axis")
+        plt.ylabel("Y-axis")
+        plt.grid()
+        plt.show()  # 显示绘图
 
-    def draw_line(self, line):
-        start, end = line.get_coordinates()
-        print(f"Drawing line from {start} to {end}")
+    def draw_line(self, line, insertion_point=(0, 0)):
+        start = line.dxf.start + insertion_point  # 应用插入点
+        end = line.dxf.end + insertion_point  # 应用插入点
+        plt.plot([start.x, end.x], [start.y, end.y], color='blue')  # 绘制线段
 
-    def draw_circle(self, circle):
-        center, radius = circle.get_coordinates()
-        print(f"Drawing circle at {center} with radius {radius}")
+    def draw_circle(self, circle, insertion_point=(0, 0)):
+        center = circle.dxf.center + insertion_point  # 应用插入点
+        radius = circle.dxf.radius
+        circle_patch = plt.Circle((center.x, center.y), radius, color='red', fill=False)  # 创建圆形
+        plt.gca().add_patch(circle_patch)  # 添加圆形到绘图中
 
+    def draw_block(self, block):
+        block_name = block.dxf.name
+        insertion_point = block.dxf.insert
+        print(f"Drawing block '{block_name}' at {insertion_point}")  # 打印块信息
+
+        # 获取块定义并绘制其中的实体
+        if block_name in self.blocks:
+            block_definition = self.blocks[block_name]
+            for entity in block_definition:
+                if entity.dxftype() == 'LINE':
+                    self.draw_line(entity, insertion_point)  # 传递插入点
+                elif entity.dxftype() == 'CIRCLE':
+                    self.draw_circle(entity, insertion_point)  # 传递插入点
+                # 可以添加更多的实体类型处理
+
+# 示例用法
 if __name__ == "__main__":
     source_dxf = "extracted_blocks/VALLGA.dxf"
     module_dxf = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
@@ -168,8 +164,5 @@ if __name__ == "__main__":
     dxf_file.generate_output('output.txt')
 
     # 绘制图形
-    drawing = Drawing()
-    for entity in dxf_file.entities:
-        drawing.add_entity(entity)
-
+    drawing = Drawing(dxf_file.entities, dxf_file.blocks)
     drawing.draw()

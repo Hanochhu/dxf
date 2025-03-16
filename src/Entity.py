@@ -4,7 +4,6 @@ from ezdxf.math import Vec3
 from dataclasses import dataclass, field
 from typing import List, Set, Dict, Optional, Type
 import json
-import uuid
 import math
 import networkx as nx
 
@@ -34,8 +33,37 @@ class EntityInfo:
     attributes: List[AttributeInfo] = field(
         default_factory=list)  # 新增：存储ATTRIB实体
     sub_entities: List[str] = field(default_factory=list)  # 新增：存储组成实体的ID
-    # TODO 使用ezdxf内部的uuid
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))  # 添加唯一标识符
+
+    def __init__(self, dxf_entity: object, entity_type: str = None, layer: str = None,
+                 block_name: Optional[str] = None, rotation: float = 0.0,
+                 scale: tuple = (1.0, 1.0, 1.0), position: tuple = (0.0, 0.0, 0.0),
+                 attributes: List[AttributeInfo] = None, sub_entities: List[str] = None):
+        self.dxf_entity = dxf_entity
+        self.entity_type = entity_type or dxf_entity.dxftype()
+        self.layer = layer or dxf_entity.dxf.layer
+
+        # 设置默认值
+        self.block_name = block_name
+        self.rotation = rotation
+        self.scale = scale
+        self.position = position
+        self.attributes = attributes or []
+        self.sub_entities = sub_entities or []
+
+        # 设置ID
+        if hasattr(dxf_entity, 'uuid'):
+            self.id = str(dxf_entity.uuid)
+
+        # 如果是INSERT类型,设置block相关属性
+        if self.entity_type == 'INSERT':
+            self.block_name = dxf_entity.dxf.name
+            self.rotation = dxf_entity.dxf.rotation
+            self.scale = (dxf_entity.dxf.xscale,
+                          dxf_entity.dxf.yscale,
+                          dxf_entity.dxf.zscale)
+            self.position = (dxf_entity.dxf.insert.x,
+                             dxf_entity.dxf.insert.y,
+                             dxf_entity.dxf.insert.z)
 
     def add_attribute(self, attrib: 'AttributeInfo'):
         """添加ATTRIB实体"""
@@ -343,8 +371,8 @@ class EntityNetwork:
             return 1
 
         special_entities = sorted(
-            [e for e in self.entities if e.entity_type in pattern.entity_types], 
-            key=entity_specialness, 
+            [e for e in self.entities if e.entity_type in pattern.entity_types],
+            key=entity_specialness,
             reverse=True
         )
 
@@ -370,7 +398,7 @@ class EntityNetwork:
                     connected_ids = self.connections.get(current.id, set())
                     to_visit.extend(
                         next((e for e in self.entities if e.id == connected_id), None)
-                        for connected_id in connected_ids 
+                        for connected_id in connected_ids
                         if connected_id not in visited
                     )
 
@@ -401,7 +429,7 @@ class EntityNetwork:
         if mybbox is not None:  # 只在能获取到边界框时进行长宽比检查
             width = mybbox[1][0] - mybbox[0][0]
             height = mybbox[1][1] - mybbox[0][1]
-          
+
             if height != 0:
                 aspect_ratio = width / height
                 if not (pattern.aspect_ratio_range[0] <= aspect_ratio <= pattern.aspect_ratio_range[1]):
@@ -511,14 +539,14 @@ class EntityNetwork:
             # 跳过属性类实体
             if entity.dxftype() in filter_types:
                 continue
-            
+
             entity_info = EntityInfo(
                 dxf_entity=entity,
                 entity_type=entity.dxftype(),
                 layer=entity.dxf.layer
             )
             entities.append(entity_info)
-            
+
             # 收集实体信息
             features['entities'].append(self.get_entity_info(entity_info))
             features['entity_types'].add(entity.dxftype())
@@ -604,7 +632,7 @@ class EntityNetwork:
             rotated_max_y += pos_y
 
             scaled_bbox = ((rotated_min_x, rotated_min_y),
-                          (rotated_max_x, rotated_max_y))
+                           (rotated_max_x, rotated_max_y))
 
             features.update({
                 'bounding_box': scaled_bbox,
@@ -653,27 +681,28 @@ class EntityNetwork:
 
         # 定义需要过滤的实体类型
         filter_types = {'ATTRIB', 'ATTDEF'}
-      
+
         # 收集所有需要处理的实体
         entities_to_process = []
-      
+
         for entity in entities:
             if entity.entity_type == 'INSERT':
                 # 查找并处理所有子实体
                 for sub_entity_id in entity.sub_entities:
-                    sub_entity = next((e for e in self.entities if e.id == sub_entity_id), None)
+                    sub_entity = next(
+                        (e for e in self.entities if e.id == sub_entity_id), None)
                     if sub_entity and sub_entity.entity_type not in filter_types:
                         entities_to_process.append(sub_entity.dxf_entity)
             elif entity.entity_type not in filter_types:
                 entities_to_process.append(entity.dxf_entity)
-      
+
         # 如果没有实体需要处理，返回 None
         if not entities_to_process:
             return None
-          
+
         # 一次性处理所有实体
         mybbox = bbox.extents(entities_to_process)
-        return ((mybbox.extmin.x, mybbox.extmin.y), 
+        return ((mybbox.extmin.x, mybbox.extmin.y),
                 (mybbox.extmax.x, mybbox.extmax.y))
 
 
@@ -787,7 +816,7 @@ if __name__ == "__main__":
     print("\n=== 获取模块版本的位置信息 ===")
     module_results = find_matching_entities(source_dxf, module_dxf)
     module_positions = []
-    
+
     for match in module_results:
         if match["type"] == "block":
             center = None
@@ -799,14 +828,14 @@ if __name__ == "__main__":
                 )
             elif match.get("position"):
                 center = match["position"][:2]  # 只取x,y坐标
-                
+
             if center:
                 module_positions.append({
                     "center": center,
                     "rotation": match.get("rotation", 0),
                     "name": match.get("name", "unknown")
                 })
-    
+
     print(f"\n找到 {len(module_positions)} 个模块位置:")
     for i, pos in enumerate(module_positions, 1):
         print(f"{i}. 中心点: ({pos['center'][0]:.2f}, {pos['center'][1]:.2f}), "
@@ -816,14 +845,14 @@ if __name__ == "__main__":
     print("\n=== 检查线条版本的聚类结果 ===")
     line_results = find_matching_entities(source_dxf, line_dxf)
     line_positions = []
-    
+
     for match in line_results:
         if match["type"] == "entity_group" and match.get("center"):
             line_positions.append({
                 "center": match["center"],
                 "bbox": match.get("bounding_box")
             })
-    
+
     print(f"\n找到 {len(line_positions)} 个线条聚类组")
 
     # 比对位置匹配情况
@@ -831,36 +860,39 @@ if __name__ == "__main__":
     tolerance = 1.0  # 位置匹配的容差值（单位：图纸单位）
     matched_modules = set()
     matched_lines = set()
-    
+
     for i, mod_pos in enumerate(module_positions):
         found_match = False
         best_distance = float('inf')
         best_match = None
-        
+
         for j, line_pos in enumerate(line_positions):
             if j in matched_lines:
                 continue
-                
+
             dx = mod_pos["center"][0] - line_pos["center"][0]
             dy = mod_pos["center"][1] - line_pos["center"][1]
             distance = (dx*dx + dy*dy) ** 0.5
-            
+
             if distance < tolerance and distance < best_distance:
                 best_distance = distance
                 best_match = (j, line_pos, distance)
                 found_match = True
-        
+
         if found_match:
             j, line_pos, distance = best_match
             matched_modules.add(i)
             matched_lines.add(j)
             print(f"\n匹配 #{i+1}:")
-            print(f"模块: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
-            print(f"线条: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")
+            print(
+                f"模块: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
+            print(
+                f"线条: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")
             print(f"距离: {distance:.2f}")
         else:
             print(f"\n未匹配模块 #{i+1}:")
-            print(f"位置: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
+            print(
+                f"位置: ({mod_pos['center'][0]:.2f}, {mod_pos['center'][1]:.2f})")
 
     # 输出统计信息
     print("\n=== 匹配统计 ===")
@@ -869,10 +901,11 @@ if __name__ == "__main__":
     print(f"成功匹配数: {len(matched_modules)}")
     print(f"未匹配模块数: {len(module_positions) - len(matched_modules)}")
     print(f"未匹配线条组数: {len(line_positions) - len(matched_lines)}")
-    
+
     # 检查未匹配的线条组
     if len(line_positions) - len(matched_lines) > 0:
         print("\n未匹配的线条组位置:")
         for j, line_pos in enumerate(line_positions):
             if j not in matched_lines:
-                print(f"组 #{j+1}: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")
+                print(
+                    f"组 #{j+1}: ({line_pos['center'][0]:.2f}, {line_pos['center'][1]:.2f})")

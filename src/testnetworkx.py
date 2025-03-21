@@ -1,3 +1,13 @@
+import warnings
+import matplotlib as mpl
+
+# 禁止matplotlib的字体警告
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
+
+# 设置matplotlib使用支持中文的字体
+mpl.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']  # 优先使用这些字体
+mpl.rcParams['axes.unicode_minus'] = False  # 正确显示负号
+
 import networkx as nx
 import matplotlib.pyplot as plt
 from typing import Dict, List, Tuple, Any, Set, Optional
@@ -924,7 +934,252 @@ class EdgeDirectionInference:
         
         return updated_graph
 
-# 如果作为脚本运行，执行演示
+# 在EdgeDirectionInference类后添加测试函数
+
+def test_direction_inference_methods():
+    """测试不同的边方向推理方法"""
+    print("\n=== 测试边方向推理方法 ===")
+    
+    # 1. 生成模拟数据
+    blocks, connections = generate_mock_cad_data()
+    G = build_graph(blocks, connections)
+    
+    # 统计原始图中已知和未知方向的边
+    known_edges = sum(1 for _, _, data in G.edges(data=True) if data.get("has_direction", True))
+    unknown_edges = G.number_of_edges() - known_edges
+    print(f"原始图: {known_edges} 条已知方向边, {unknown_edges} 条未知方向边")
+    
+    # 2. 创建边方向推理引擎
+    direction_inference = EdgeDirectionInference(G)
+    
+    # 3. 测试PageRank方法
+    print("\n--- 测试PageRank方法 ---")
+    pagerank_results = test_pagerank_inference(G)
+    
+    # 4. 测试最短路径方法
+    print("\n--- 测试最短路径方法 ---")
+    path_results = test_path_inference(G)
+    
+    # 5. 测试拓扑排序方法
+    print("\n--- 测试拓扑排序方法 ---")
+    topo_results = test_topo_inference(G)
+    
+    # 6. 比较结果
+    print("\n--- 结果比较 ---")
+    print(f"PageRank方法: 推断出 {len(pagerank_results)} 条边的方向")
+    print(f"最短路径方法: 推断出 {len(path_results)} 条边的方向")
+    print(f"拓扑排序方法: 推断出 {len(topo_results)} 条边的方向")
+    
+    # 7. 可视化比较
+    plt.figure(figsize=(15, 10))
+    
+    # 原始图
+    plt.subplot(2, 2, 1)
+    visualize_test_graph(G, title="原始图")
+    
+    # PageRank结果
+    plt.subplot(2, 2, 2)
+    G_pagerank = direction_inference.apply_inferred_directions(pagerank_results)
+    visualize_test_graph(G_pagerank, highlight_edges=list(pagerank_results.keys()), 
+                        title=f"PageRank方法 ({len(pagerank_results)}条)")
+    
+    # 最短路径结果
+    plt.subplot(2, 2, 3)
+    G_path = direction_inference.apply_inferred_directions(path_results)
+    visualize_test_graph(G_path, highlight_edges=list(path_results.keys()), 
+                        title=f"最短路径方法 ({len(path_results)}条)")
+    
+    # 拓扑排序结果
+    plt.subplot(2, 2, 4)
+    G_topo = direction_inference.apply_inferred_directions(topo_results)
+    visualize_test_graph(G_topo, highlight_edges=list(topo_results.keys()), 
+                        title=f"拓扑排序方法 ({len(topo_results)}条)")
+    
+    plt.tight_layout()
+    plt.savefig("direction_inference_methods_comparison.png", dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    return pagerank_results, path_results, topo_results
+
+def test_pagerank_inference(G):
+    """测试PageRank方法"""
+    # 创建一个新图，只包含已知方向的边
+    known_graph = nx.DiGraph()
+    unknown_edges = []
+    
+    # 分离已知方向和未知方向的边
+    for u, v, data in G.edges(data=True):
+        if data.get("has_direction", True):
+            known_graph.add_edge(u, v)
+        else:
+            unknown_edges.append((u, v))
+    
+    inferred_directions = {}
+    
+    try:
+        # 使用PageRank算法
+        pagerank = nx.pagerank(known_graph)
+        
+        # 对于未知方向的边，从PageRank值高的节点指向值低的节点
+        for u, v in unknown_edges:
+            if u in pagerank and v in pagerank:
+                # 如果u的PageRank值高于v，则方向为u->v
+                if pagerank[u] > pagerank[v]:
+                    confidence = min(0.5 + (pagerank[u] - pagerank[v]) * 5, 0.9)
+                    inferred_directions[(u, v)] = confidence
+                    print(f"PageRank推断: {u} → {v}, 置信度={confidence:.2f}")
+                # 如果v的PageRank值高于u，则方向为v->u
+                elif pagerank[v] > pagerank[u]:
+                    confidence = min(0.5 + (pagerank[v] - pagerank[u]) * 5, 0.9)
+                    inferred_directions[(v, u)] = confidence
+                    print(f"PageRank推断: {v} → {u}, 置信度={confidence:.2f}")
+    except Exception as e:
+        print(f"PageRank算法失败: {e}")
+    
+    return inferred_directions
+
+def test_path_inference(G):
+    """测试最短路径方法"""
+    # 创建一个新图，只包含已知方向的边
+    known_graph = nx.DiGraph()
+    unknown_edges = []
+    
+    # 分离已知方向和未知方向的边
+    for u, v, data in G.edges(data=True):
+        if data.get("has_direction", True):
+            known_graph.add_edge(u, v)
+        else:
+            unknown_edges.append((u, v))
+    
+    inferred_directions = {}
+    
+    # 使用最短路径分析
+    for u, v in unknown_edges:
+        # 计算所有节点对之间的最短路径
+        u_to_v_paths = 0
+        v_to_u_paths = 0
+        
+        # 检查是否存在通过其他路径从u到v的路径
+        for source in known_graph.nodes():
+            for target in known_graph.nodes():
+                if source == u and target == v:
+                    continue  # 跳过直接边
+                
+                try:
+                    paths = list(nx.all_simple_paths(known_graph, source, target, cutoff=4))
+                    for path in paths:
+                        if u in path and v in path and path.index(u) < path.index(v):
+                            u_to_v_paths += 1
+                        elif u in path and v in path and path.index(v) < path.index(u):
+                            v_to_u_paths += 1
+                except:
+                    pass
+        
+        # 如果存在明显的方向趋势
+        total_paths = u_to_v_paths + v_to_u_paths
+        if total_paths > 0:
+            direction_ratio = abs(u_to_v_paths - v_to_u_paths) / total_paths
+            if direction_ratio >= 0.4:  # 使用较低的阈值
+                if u_to_v_paths > v_to_u_paths:
+                    confidence = min(0.5 + direction_ratio * 0.4, 0.9)
+                    inferred_directions[(u, v)] = confidence
+                    print(f"路径分析推断: {u} → {v}, 置信度={confidence:.2f}")
+                else:
+                    confidence = min(0.5 + direction_ratio * 0.4, 0.9)
+                    inferred_directions[(v, u)] = confidence
+                    print(f"路径分析推断: {v} → {u}, 置信度={confidence:.2f}")
+    
+    return inferred_directions
+
+def test_topo_inference(G):
+    """测试拓扑排序方法"""
+    # 创建一个新图，只包含已知方向的边
+    known_graph = nx.DiGraph()
+    unknown_edges = []
+    
+    # 分离已知方向和未知方向的边
+    for u, v, data in G.edges(data=True):
+        if data.get("has_direction", True):
+            known_graph.add_edge(u, v)
+        else:
+            unknown_edges.append((u, v))
+    
+    inferred_directions = {}
+    
+    try:
+        # 尝试对已知图进行拓扑排序
+        topo_order = list(nx.topological_sort(known_graph))
+        
+        # 对于未知方向的边，从拓扑顺序靠前的节点指向靠后的节点
+        for u, v in unknown_edges:
+            if u in topo_order and v in topo_order:
+                u_pos = topo_order.index(u)
+                v_pos = topo_order.index(v)
+                
+                # 位置差越大，置信度越高
+                pos_diff = abs(u_pos - v_pos) / len(topo_order)
+                
+                if u_pos < v_pos:  # u在拓扑排序中排在v前面
+                    confidence = min(0.5 + pos_diff * 0.4, 0.9)
+                    inferred_directions[(u, v)] = confidence
+                    print(f"拓扑排序推断: {u} → {v}, 置信度={confidence:.2f}")
+                else:
+                    confidence = min(0.5 + pos_diff * 0.4, 0.9)
+                    inferred_directions[(v, u)] = confidence
+                    print(f"拓扑排序推断: {v} → {u}, 置信度={confidence:.2f}")
+    except Exception as e:
+        print(f"拓扑排序失败: {e}")
+    
+    return inferred_directions
+
+def visualize_test_graph(G, highlight_edges=None, title="Graph"):
+    """为测试结果可视化图"""
+    pos = {node: data["position"] for node, data in G.nodes(data=True)}
+    
+    # 绘制节点
+    nx.draw_networkx_nodes(G, pos, node_size=300, node_color='skyblue', alpha=0.8)
+    
+    # 绘制已知方向的边
+    known_edges = [(u, v) for u, v, data in G.edges(data=True) 
+                  if data.get("has_direction", True) and data.get("direction_confidence") is None]
+    nx.draw_networkx_edges(
+        G, pos, edgelist=known_edges, 
+        width=1, edge_color='gray', arrows=True, arrowsize=10
+    )
+    
+    # 绘制未知方向的边
+    unknown_edges = [(u, v) for u, v, data in G.edges(data=True) if not data.get("has_direction", True)]
+    for u, v in unknown_edges:
+        nx.draw_networkx_edges(
+            G, pos, edgelist=[(u, v)], 
+            width=1, edge_color='blue', arrows=False
+        )
+    
+    # 绘制推断出方向的边
+    inferred_edges = [(u, v) for u, v, data in G.edges(data=True) if data.get("direction_confidence") is not None]
+    nx.draw_networkx_edges(
+        G, pos, edgelist=inferred_edges, 
+        width=2, edge_color='purple', arrows=True, arrowsize=15
+    )
+    
+    # 高亮显示特定的边
+    if highlight_edges:
+        nx.draw_networkx_edges(
+            G, pos, edgelist=highlight_edges, 
+            width=2, edge_color='red', arrows=True, arrowsize=15
+        )
+    
+    # 绘制标签
+    nx.draw_networkx_labels(G, pos, font_size=8)
+    
+    plt.title(title)
+    plt.axis('off')
+
+# 修改主函数，添加测试调用
 if __name__ == "__main__":
-    G, G_updated, direction_inference = run_demonstration()
+    # 运行常规演示
+    G_original, G_updated, direction_inference = run_demonstration()
+    
+    # 运行测试
+    pagerank_results, path_results, topo_results = test_direction_inference_methods()
 

@@ -53,6 +53,67 @@ def generate_mock_cad_data():
     
     return blocks, connections
 
+def generate_pid_data():
+    """生成管道仪表图(P&ID)数据"""
+    
+    # 节点数据
+    blocks = {
+        # 管道标识节点
+        "17_2166": {"id": "17_2166", "type": "line_entry", "name": "Line 17/2166", "position": (100, 60), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "6_2586": {"id": "6_2586", "type": "line_entry", "name": "Line 6/2586", "position": (100, 190), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "15_2286": {"id": "15_2286", "type": "line_entry", "name": "Line 15/2286", "position": (100, 290), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "5_2296": {"id": "5_2296", "type": "line_entry", "name": "Line 5/2296", "position": (100, 400), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "18_2101": {"id": "18_2101", "type": "line_entry", "name": "Line 18/2101", "position": (100, 550), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "16_2156": {"id": "16_2156", "type": "line_entry", "name": "Line 16/2156", "position": (100, 650), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "18_2569": {"id": "18_2569", "type": "line_entry", "name": "Line 18/2569", "position": (100, 750), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        "8_2920": {"id": "8_2920", "type": "line_entry", "name": "Line 8/2920-1", "position": (100, 900), "features": {"entity_count": 2, "aspect_ratio": 3.0}},
+        
+        # 设备与仪表节点
+        "PC_90001": {"id": "PC_90001", "type": "controller", "name": "PC 90001", "position": (610, 435), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "PT_90001": {"id": "PT_90001", "type": "transmitter", "name": "PT 90001", "position": (610, 550), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "PV_90001": {"id": "PV_90001", "type": "valve", "name": "PV 90001", "position": (765, 590), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "FC_40": {"id": "FC_40", "type": "controller", "name": "FC 40", "position": (760, 670), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        
+        # 交叉点和连接点
+        "CROSS_1": {"id": "CROSS_1", "type": "junction", "name": "十字交叉点", "position": (600, 250), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "CONN_1": {"id": "CONN_1", "type": "junction", "name": "中部连接点", "position": (470, 350), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "VALVE_1": {"id": "VALVE_1", "type": "valve", "name": "阀门节点", "position": (470, 550), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "RIGHT_CONN_1": {"id": "RIGHT_CONN_1", "type": "junction", "name": "右侧连接点1", "position": (1050, 60), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "RIGHT_CONN_2": {"id": "RIGHT_CONN_2", "type": "junction", "name": "右侧连接点2", "position": (1050, 190), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "RIGHT_CONN_3": {"id": "RIGHT_CONN_3", "type": "junction", "name": "右侧连接点3", "position": (1050, 290), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+        "BOTTOM_CONN": {"id": "BOTTOM_CONN", "type": "junction", "name": "下方连接点", "position": (750, 820), "features": {"entity_count": 1, "aspect_ratio": 1.0}},
+    }
+    
+    # 连接数据 - 包含已知方向和未知方向的边
+    connections = [
+        # 已知方向的边 (根据图中箭头)
+        {"source_id": "17_2166", "target_id": "RIGHT_CONN_1", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01411-150FB-ET"},
+        {"source_id": "6_2586", "target_id": "CROSS_1", "has_direction": True, "connection_type": "direct", "line_id": "50-PL-05292-150FF-ET"},
+        {"source_id": "15_2286", "target_id": "RIGHT_CONN_3", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-02685-150FB-ET"},
+        {"source_id": "5_2296", "target_id": "CONN_1", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-02735-150FB-ET"},
+        {"source_id": "CONN_1", "target_id": "15_2286", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-02735-150FB-ET"},  # 上行连接
+        {"source_id": "18_2101", "target_id": "VALVE_1", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01025-300FB-ET"},
+        {"source_id": "VALVE_1", "target_id": "16_2156", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01025-300FB-ET"},
+        {"source_id": "16_2156", "target_id": "PT_90001", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01311-150FB-ET"},
+        {"source_id": "PT_90001", "target_id": "FC_40", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01311-150FB-ET"},
+        {"source_id": "FC_40", "target_id": "PV_90001", "has_direction": True, "connection_type": "direct", "line_id": "50-PW-01311-150FB-ET"},
+        {"source_id": "18_2569", "target_id": "BOTTOM_CONN", "has_direction": True, "connection_type": "direct", "line_id": "80-PW-05383-150FB"},
+        {"source_id": "8_2920", "target_id": "BOTTOM_CONN", "has_direction": True, "connection_type": "direct", "line_id": "80-PW-09237-300FH-ET"},
+        
+        # 信号线连接（虚线，控制信号）
+        {"source_id": "PC_90001", "target_id": "PT_90001", "has_direction": True, "connection_type": "indirect", "line_id": "signal-1"},
+        {"source_id": "PC_90001", "target_id": "PV_90001", "has_direction": True, "connection_type": "indirect", "line_id": "signal-2"},
+        
+        # 未知方向的边 (或难以确定方向的连接)
+        {"source_id": "CROSS_1", "target_id": "RIGHT_CONN_2", "has_direction": False, "connection_type": "direct", "line_id": "50-PL-05292-150FF-ET"},
+        {"source_id": "CROSS_1", "target_id": "CONN_1", "has_direction": False, "connection_type": "direct", "line_id": "unknown-1"},
+        {"source_id": "BOTTOM_CONN", "target_id": "RIGHT_CONN_1", "has_direction": False, "connection_type": "direct", "line_id": "80-PW-09439-150FB"},
+        {"source_id": "VALVE_1", "target_id": "PT_90001", "has_direction": False, "connection_type": "direct", "line_id": "unknown-2"},
+        {"source_id": "PV_90001", "target_id": "BOTTOM_CONN", "has_direction": False, "connection_type": "direct", "line_id": "unknown-3"},
+    ]
+    
+    return blocks, connections
+
 # --------- 2. 构建 NetworkX 图 ---------
 
 def build_graph(blocks, connections):
@@ -481,7 +542,9 @@ def run_demonstration():
     print("=== NetworkX CAD 关系分析系统验证 ===")
     
     # 1. 生成模拟数据
-    blocks, connections = generate_mock_cad_data()
+    #TODO
+    # blocks, connections = generate_mock_cad_data()
+    blocks, connections = generate_pid_data()
     print(f"生成了 {len(blocks)} 个块和 {len(connections)} 个连接")
     
     # 2. 构建图
@@ -941,7 +1004,9 @@ def test_direction_inference_methods():
     print("\n=== 测试边方向推理方法 ===")
     
     # 1. 生成模拟数据
-    blocks, connections = generate_mock_cad_data()
+    #TODO
+    # blocks, connections = generate_mock_cad_data()
+    blocks, connections = generate_pid_data()
     G = build_graph(blocks, connections)
     
     # 统计原始图中已知和未知方向的边
@@ -964,42 +1029,75 @@ def test_direction_inference_methods():
     print("\n--- 测试拓扑排序方法 ---")
     topo_results = test_topo_inference(G)
     
-    # 6. 比较结果
+    # 6. 合并所有方法的结果
+    print("\n--- 合并推断结果 ---")
+    combined_results = {}
+    
+    # 按置信度从高到低排序
+    all_results = list(pagerank_results.items()) + list(path_results.items()) + list(topo_results.items())
+    all_results.sort(key=lambda x: x[1], reverse=True)
+    
+    for (u, v), confidence in all_results:
+        # 如果这条边的反向还没有被添加，则添加这条边
+        if (v, u) not in combined_results:
+            combined_results[(u, v)] = confidence
+    
+    print(f"合并后共有 {len(combined_results)} 条推断边")
+    
+    # 7. 解决方向矛盾
+    resolved_results = resolve_direction_conflicts(combined_results)
+    print(f"解决矛盾后剩余 {len(resolved_results)} 条推断边")
+    
+    # 8. 比较结果
     print("\n--- 结果比较 ---")
     print(f"PageRank方法: 推断出 {len(pagerank_results)} 条边的方向")
     print(f"最短路径方法: 推断出 {len(path_results)} 条边的方向")
     print(f"拓扑排序方法: 推断出 {len(topo_results)} 条边的方向")
+    print(f"合并后: {len(combined_results)} 条边")
+    print(f"解决矛盾后: {len(resolved_results)} 条边")
     
-    # 7. 可视化比较
+    # 9. 可视化比较
     plt.figure(figsize=(15, 10))
     
     # 原始图
-    plt.subplot(2, 2, 1)
+    plt.subplot(2, 3, 1)
     visualize_test_graph(G, title="原始图")
     
     # PageRank结果
-    plt.subplot(2, 2, 2)
+    plt.subplot(2, 3, 2)
     G_pagerank = direction_inference.apply_inferred_directions(pagerank_results)
     visualize_test_graph(G_pagerank, highlight_edges=list(pagerank_results.keys()), 
                         title=f"PageRank方法 ({len(pagerank_results)}条)")
     
     # 最短路径结果
-    plt.subplot(2, 2, 3)
+    plt.subplot(2, 3, 3)
     G_path = direction_inference.apply_inferred_directions(path_results)
     visualize_test_graph(G_path, highlight_edges=list(path_results.keys()), 
                         title=f"最短路径方法 ({len(path_results)}条)")
     
     # 拓扑排序结果
-    plt.subplot(2, 2, 4)
+    plt.subplot(2, 3, 4)
     G_topo = direction_inference.apply_inferred_directions(topo_results)
     visualize_test_graph(G_topo, highlight_edges=list(topo_results.keys()), 
                         title=f"拓扑排序方法 ({len(topo_results)}条)")
+    
+    # 合并结果
+    plt.subplot(2, 3, 5)
+    G_combined = direction_inference.apply_inferred_directions(combined_results)
+    visualize_test_graph(G_combined, highlight_edges=list(combined_results.keys()), 
+                        title=f"合并方法 ({len(combined_results)}条)")
+    
+    # 解决矛盾后的结果
+    plt.subplot(2, 3, 6)
+    G_resolved = direction_inference.apply_inferred_directions(resolved_results)
+    visualize_test_graph(G_resolved, highlight_edges=list(resolved_results.keys()), 
+                        title=f"解决矛盾后 ({len(resolved_results)}条)")
     
     plt.tight_layout()
     plt.savefig("direction_inference_methods_comparison.png", dpi=300, bbox_inches='tight')
     plt.show()
     
-    return pagerank_results, path_results, topo_results
+    return pagerank_results, path_results, topo_results, combined_results, resolved_results
 
 def test_pagerank_inference(G):
     """测试PageRank方法"""
@@ -1175,11 +1273,60 @@ def visualize_test_graph(G, highlight_edges=None, title="Graph"):
     plt.title(title)
     plt.axis('off')
 
+def resolve_direction_conflicts(inferred_directions):
+    """解决方向推断中的矛盾"""
+    print("\n--- 解决方向矛盾 ---")
+    
+    # 创建一个有向图来检测环
+    conflict_graph = nx.DiGraph()
+    
+    # 添加所有推断的边
+    for (u, v), confidence in inferred_directions.items():
+        conflict_graph.add_edge(u, v, confidence=confidence)
+    
+    # 检查是否有环
+    try:
+        cycles = list(nx.simple_cycles(conflict_graph))
+        if cycles:
+            print(f"检测到 {len(cycles)} 个方向矛盾环")
+            
+            # 解决每个环中的矛盾
+            resolved_directions = inferred_directions.copy()
+            
+            for cycle in cycles:
+                print(f"处理矛盾环: {cycle}")
+                
+                # 找出环中置信度最低的边
+                min_confidence = float('inf')
+                min_edge = None
+                
+                for i in range(len(cycle)):
+                    u = cycle[i]
+                    v = cycle[(i + 1) % len(cycle)]
+                    
+                    if (u, v) in resolved_directions:
+                        confidence = resolved_directions[(u, v)]
+                        if confidence < min_confidence:
+                            min_confidence = confidence
+                            min_edge = (u, v)
+                
+                if min_edge:
+                    print(f"移除置信度最低的边: {min_edge[0]} → {min_edge[1]} (置信度={min_confidence:.2f})")
+                    resolved_directions.pop(min_edge)
+            
+            return resolved_directions
+        else:
+            print("没有检测到方向矛盾")
+            return inferred_directions
+    except:
+        print("检查环时出错")
+        return inferred_directions
+
 # 修改主函数，添加测试调用
 if __name__ == "__main__":
     # 运行常规演示
     G_original, G_updated, direction_inference = run_demonstration()
     
     # 运行测试
-    pagerank_results, path_results, topo_results = test_direction_inference_methods()
+    pagerank_results, path_results, topo_results, combined_results, resolved_results = test_direction_inference_methods()
 

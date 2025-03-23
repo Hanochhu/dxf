@@ -1,5 +1,28 @@
 # DXF 处理工具
 
+```
+src/
+├── core/                 # 核心数据结构
+│   └── data_structures.py
+├── parsers/              # 文件解析模块
+│   ├── parser_interface.py
+│   ├── dxf_parser.py
+│   └── step_parser.py
+├── feature/              # 特征提取和识别
+│   └── block_identifier.py
+├── connection/           # 连接分析
+│   └── connection_analyzer.py
+├── graph/                # 图构建
+│   └── cad_graph.py
+├── query/                # 查询接口
+│   └── cad_query.py
+├── system/               # 系统整合
+│   └── cad_analysis_system.py
+└── examples/             # 使用示例
+    ├── basic_usage.py
+    └── advanced_usage.py
+```
+
 ## 使用步骤
 
 1. 把 `图例和流程图_仪表管件设备均为模块` 这个文件放在根目录下

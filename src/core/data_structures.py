@@ -217,8 +217,8 @@ class Entity:
 @dataclass
 class LineEntity(Entity):
     """线段实体"""
-    start_point: Point=field(default_factory=Point)
-    end_point: Point=field(default_factory=Point)
+    start_point: Point = field(default_factory=Point)
+    end_point: Point = field(default_factory=Point)
     
     def __post_init__(self):
         """初始化后计算边界框"""
@@ -281,8 +281,8 @@ class LineEntity(Entity):
 @dataclass
 class CircleEntity(Entity):
     """圆形实体"""
-    center: Point
-    radius: float
+    center: Point = field(default_factory=Point)
+    radius: float = 0.0
     
     def __post_init__(self):
         """初始化后计算边界框"""
@@ -319,10 +319,10 @@ class CircleEntity(Entity):
 @dataclass
 class ArcEntity(Entity):
     """弧形实体"""
-    center: Point
-    radius: float
-    start_angle: float
-    end_angle: float
+    center: Point = field(default_factory=Point)
+    radius: float = 0.0
+    start_angle: float = 0.0
+    end_angle: float = 0.0
     
     def __post_init__(self):
         """初始化后计算边界框"""
@@ -364,9 +364,9 @@ class ArcEntity(Entity):
 @dataclass
 class TextEntity(Entity):
     """文本实体"""
-    text: str
-    position: Point
-    height: float
+    text: str = ""
+    position: Point = field(default_factory=Point)
+    height: float = 0.0
     rotation: float = 0.0
     
     def __post_init__(self):

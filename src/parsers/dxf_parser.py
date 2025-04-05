@@ -9,12 +9,12 @@ import math
 from typing import List, Tuple, Dict, Any, Optional, Set
 import uuid
 
-from core.data_structures import (
+from src.core.data_structures import (
     Point, BoundingBox, EntityType, Entity, LineEntity, 
     CircleEntity, ArcEntity, TextEntity, Block, 
     BlockReference, AttributeInfo
 )
-from parsers.parser_interface import CADFileParser
+from src.parsers.parser_interface import CADFileParser
 
 
 class DXFParseError(Exception):

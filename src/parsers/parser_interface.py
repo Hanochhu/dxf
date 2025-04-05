@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional
 import uuid
 
-from core.data_structures import Entity, Block
+from src.core.data_structures import Entity, Block
 
 
 class CADFileParser(ABC):

@@ -12,7 +12,19 @@ from core.data_structures import Block, Connection
 
 
 class CADGraph:
-    """CAD图形结构类"""
+    """
+    CAD图形结构类
+    
+    本类提供图表示的构建和操作功能，整合了以下核心功能：
+    1. 图构建与管理：从块和连接构建有向图表示
+    2. 路径查找：查找节点间的路径和所有可能路径
+    3. 环路检测：识别图中的环路结构
+    4. 连通性分析：分析图的连通性和关键节点
+    5. 数据导入导出：支持JSON格式的导入导出
+    6. 社区检测：识别图中的社区结构
+    
+    注意: 此类整合了原PathFinder类的功能，统一提供图分析相关操作。
+    """
     
     def __init__(self):
         """初始化CAD图形"""
@@ -224,7 +236,7 @@ class CADGraph:
     
     def get_path(self, source_id: str, target_id: str) -> List[str]:
         """
-        查找从源块到目标块的路径
+        查找从源块到目标块的最短路径
         
         Args:
             source_id: 源块ID
@@ -257,6 +269,112 @@ class CADGraph:
             return list(nx.all_simple_paths(self.graph, source_id, target_id, cutoff=cutoff))
         except (nx.NetworkXError, nx.NetworkXNoPath):
             return []
+    
+    def find_cycles(self) -> List[List[str]]:
+        """
+        查找图中的所有环路
+        （原PathFinder类功能）
+        
+        Returns:
+            List[List[str]]: 环路列表
+        """
+        try:
+            return list(nx.simple_cycles(self.graph))
+        except:
+            # 如果图不支持查找环路（例如无向图），使用替代方法
+            cycles = []
+            for node in self.graph.nodes():
+                try:
+                    for cycle in nx.find_cycle(self.graph, source=node):
+                        path = [node]
+                        current = node
+                        while True:
+                            current = cycle[current]
+                            if current == node:
+                                break
+                            path.append(current)
+                        cycles.append(path)
+                except:
+                    pass
+            return cycles
+    
+    def find_critical_nodes(self) -> List[str]:
+        """
+        查找图中的关键节点（删除后会增加连通分量数量的节点）
+        （原PathFinder类功能）
+        
+        Returns:
+            List[str]: 关键节点ID列表
+        """
+        try:
+            return list(nx.articulation_points(self.graph.to_undirected()))
+        except:
+            # 简单版实现
+            critical_nodes = []
+            original_components = nx.number_connected_components(self.graph.to_undirected())
+            
+            for node in self.graph.nodes():
+                # 创建图的副本
+                G_copy = self.graph.copy()
+                
+                # 移除当前节点
+                G_copy.remove_node(node)
+                
+                # 检查连通分量是否增加
+                new_components = nx.number_connected_components(G_copy.to_undirected())
+                
+                if new_components > original_components:
+                    critical_nodes.append(node)
+            
+            return critical_nodes
+    
+    def analyze_connectivity(self) -> Dict:
+        """
+        分析图的连通性
+        （原PathFinder类功能）
+        
+        Returns:
+            Dict: 连通性分析结果
+        """
+        result = {
+            "node_count": self.graph.number_of_nodes(),
+            "edge_count": self.graph.number_of_edges(),
+        }
+        
+        # 检查是否为有向图
+        if isinstance(self.graph, nx.DiGraph):
+            # 分析强连通分量
+            strongly_connected = list(nx.strongly_connected_components(self.graph))
+            result["strongly_connected_components"] = len(strongly_connected)
+            
+            if strongly_connected:
+                result["largest_strongly_connected_size"] = max(len(c) for c in strongly_connected)
+            
+            # 分析弱连通分量
+            weakly_connected = list(nx.weakly_connected_components(self.graph))
+            result["weakly_connected_components"] = len(weakly_connected)
+            
+            if weakly_connected:
+                result["largest_weakly_connected_size"] = max(len(c) for c in weakly_connected)
+        else:
+            # 分析连通分量
+            connected = list(nx.connected_components(self.graph))
+            result["connected_components"] = len(connected)
+            
+            if connected:
+                result["largest_connected_size"] = max(len(c) for c in connected)
+        
+        # 计算平均路径长度（如果图是连通的）
+        try:
+            result["average_shortest_path_length"] = nx.average_shortest_path_length(self.graph)
+        except:
+            # 图可能不是连通的
+            result["average_shortest_path_length"] = None
+        
+        # 计算图密度
+        result["density"] = nx.density(self.graph)
+        
+        return result
     
     def to_networkx(self) -> nx.DiGraph:
         """
@@ -558,6 +676,7 @@ class CADGraph:
     def get_statistics(self) -> Dict:
         """
         获取图的统计信息
+        整合了原来的统计功能和连通性分析功能
         
         Returns:
             Dict: 统计信息
@@ -605,8 +724,62 @@ class CADGraph:
             else:
                 stats['is_connected'] = nx.is_connected(self.graph)
                 stats['connected_components'] = nx.number_connected_components(self.graph)
+                
+        # 获取更详细的连通性分析
+        connectivity_analysis = self.analyze_connectivity()
+        stats.update(connectivity_analysis)
         
         return stats
+    
+    def analyze_graph(self) -> Dict:
+        """
+        全面分析图结构的各个方面
+        
+        此方法整合了原ConnectionAnalyzer.analyze_connections_graph的功能，
+        作为CADGraph类功能的一部分，以保持所有图分析操作在同一个类中。
+        ConnectionAnalyzer类现在会调用此方法而不是自己实现图分析逻辑。
+        
+        Returns:
+            Dict: 图分析结果，包括连通性、环路、关键节点、中心块和社区结构
+        """
+        # 分析结果
+        results = {}
+        
+        # 连通性分析
+        results["connectivity"] = self.analyze_connectivity()
+        
+        # 查找环路
+        cycles = self.find_cycles()
+        results["cycles"] = {
+            "count": len(cycles),
+            "cycles": cycles
+        }
+        
+        # 查找关键节点
+        critical_nodes = self.find_critical_nodes()
+        results["critical_nodes"] = {
+            "count": len(critical_nodes),
+            "nodes": critical_nodes
+        }
+        
+        # 中心性分析
+        central_blocks = self.get_central_blocks(top_n=5)
+        results["central_blocks"] = {
+            "blocks": central_blocks
+        }
+        
+        # 社区检测
+        communities = self.find_communities()
+        community_counts = {}
+        for _, community_id in communities.items():
+            community_counts[community_id] = community_counts.get(community_id, 0) + 1
+        
+        results["communities"] = {
+            "count": len(set(communities.values())),
+            "distribution": community_counts
+        }
+        
+        return results
 
 
 class GraphVisualizer:

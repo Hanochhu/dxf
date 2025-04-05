@@ -1,6 +1,9 @@
 """
 连接分析模块
 提供块之间连接关系的分析功能
+
+注意：原PathFinder类的功能已合并到graph.cad_graph.CADGraph类中，以消除代码重复并保持单一职责原则。
+ConnectionAnalyzer类现在使用CADGraph类进行图相关分析。
 """
 
 import math
@@ -12,6 +15,7 @@ from core.data_structures import (
     LineEntity, Connection
 )
 from feature.block_identifier import BlockIdentifier
+from graph.cad_graph import CADGraph
 
 
 class ConnectionAnalyzer:
@@ -25,6 +29,7 @@ class ConnectionAnalyzer:
             block_identifier: 块识别器（可选）
         """
         self.block_identifier = block_identifier or BlockIdentifier()
+        self.cad_graph = CADGraph()  # 使用CADGraph替代PathFinder
         
         # 配置参数
         self.max_gap_distance = 10.0  # 最大间隙距离
@@ -536,6 +541,33 @@ class ConnectionAnalyzer:
                 except:
                     # 处理可能的NetworkX异常
                     pass
+    
+    def analyze_connections_graph(self, connections: List[Connection]) -> Dict:
+        """
+        使用CADGraph分析连接关系图
+        
+        该方法现在是对CADGraph.analyze_graph的包装，以保持API兼容性。
+        图分析的实际逻辑已移至CADGraph类，符合单一职责原则：
+        - ConnectionAnalyzer负责识别和获取连接关系
+        - CADGraph负责图结构的构建和分析
+        
+        Args:
+            connections: 连接列表
+            
+        Returns:
+            Dict: 图分析结果
+        """
+        # 提取所有块
+        blocks = set()
+        for conn in connections:
+            blocks.add(conn.source_block)
+            blocks.add(conn.target_block)
+        
+        # 构建图
+        self.cad_graph.build_from_blocks_connections(list(blocks), connections)
+        
+        # 使用CADGraph的analyze_graph方法进行分析
+        return self.cad_graph.analyze_graph()
 
 
 class ConnectionClassifier:
@@ -633,193 +665,3 @@ class ConnectionClassifier:
             "max_length": max_length,
             "min_length": min_length
         }
-
-
-class PathFinder:
-    """路径查找器"""
-    
-    def __init__(self):
-        """初始化路径查找器"""
-        self.graph = nx.DiGraph()
-    
-    def build_graph(self, connections: List[Connection]):
-        """
-        构建连接图
-        
-        Args:
-            connections: 连接列表
-        """
-        self.graph = nx.DiGraph()
-        
-        # 添加所有块作为节点
-        blocks = set()
-        for conn in connections:
-            blocks.add(conn.source_block.id)
-            blocks.add(conn.target_block.id)
-        
-        for block_id in blocks:
-            self.graph.add_node(block_id)
-        
-        # 添加连接作为边
-        for conn in connections:
-            # 如果连接有明确方向，添加有向边
-            if conn.has_explicit_direction:
-                self.graph.add_edge(
-                    conn.source_block.id,
-                    conn.target_block.id,
-                    weight=1.0,
-                    connection=conn
-                )
-            else:
-                # 否则添加双向边
-                self.graph.add_edge(
-                    conn.source_block.id,
-                    conn.target_block.id,
-                    weight=1.0,
-                    connection=conn
-                )
-                self.graph.add_edge(
-                    conn.target_block.id,
-                    conn.source_block.id,
-                    weight=1.0,
-                    connection=conn
-                )
-    
-    def find_path(self, source_id: str, target_id: str) -> List[str]:
-        """
-        查找从源到目标的最短路径
-        
-        Args:
-            source_id: 源块ID
-            target_id: 目标块ID
-            
-        Returns:
-            List[str]: 路径中的块ID列表，如果没有路径则为空列表
-        """
-        try:
-            if nx.has_path(self.graph, source_id, target_id):
-                return nx.shortest_path(self.graph, source_id, target_id)
-            else:
-                return []
-        except nx.NetworkXError:
-            return []
-    
-    def find_all_paths(self, source_id: str, target_id: str, cutoff: int = None) -> List[List[str]]:
-        """
-        查找从源到目标的所有简单路径
-        
-        Args:
-            source_id: 源块ID
-            target_id: 目标块ID
-            cutoff: 最大路径长度
-            
-        Returns:
-            List[List[str]]: 所有路径的列表
-        """
-        try:
-            return list(nx.all_simple_paths(self.graph, source_id, target_id, cutoff=cutoff))
-        except (nx.NetworkXError, nx.NetworkXNoPath):
-            return []
-    
-    def find_cycles(self) -> List[List[str]]:
-        """
-        查找图中的所有环路
-        
-        Returns:
-            List[List[str]]: 环路列表
-        """
-        try:
-            return list(nx.simple_cycles(self.graph))
-        except:
-            # 如果图不支持查找环路（例如无向图），使用替代方法
-            cycles = []
-            for node in self.graph.nodes():
-                try:
-                    for cycle in nx.find_cycle(self.graph, source=node):
-                        path = [node]
-                        current = node
-                        while True:
-                            current = cycle[current]
-                            if current == node:
-                                break
-                            path.append(current)
-                        cycles.append(path)
-                except:
-                    pass
-            return cycles
-    
-    def analyze_connectivity(self) -> Dict:
-        """
-        分析图的连通性
-        
-        Returns:
-            Dict: 连通性分析结果
-        """
-        result = {
-            "node_count": self.graph.number_of_nodes(),
-            "edge_count": self.graph.number_of_edges(),
-        }
-        
-        # 检查是否为有向图
-        if isinstance(self.graph, nx.DiGraph):
-            # 分析强连通分量
-            strongly_connected = list(nx.strongly_connected_components(self.graph))
-            result["strongly_connected_components"] = len(strongly_connected)
-            
-            if strongly_connected:
-                result["largest_strongly_connected_size"] = max(len(c) for c in strongly_connected)
-            
-            # 分析弱连通分量
-            weakly_connected = list(nx.weakly_connected_components(self.graph))
-            result["weakly_connected_components"] = len(weakly_connected)
-            
-            if weakly_connected:
-                result["largest_weakly_connected_size"] = max(len(c) for c in weakly_connected)
-        else:
-            # 分析连通分量
-            connected = list(nx.connected_components(self.graph))
-            result["connected_components"] = len(connected)
-            
-            if connected:
-                result["largest_connected_size"] = max(len(c) for c in connected)
-        
-        # 计算平均路径长度（如果图是连通的）
-        try:
-            result["average_shortest_path_length"] = nx.average_shortest_path_length(self.graph)
-        except:
-            # 图可能不是连通的
-            result["average_shortest_path_length"] = None
-        
-        # 计算图密度
-        result["density"] = nx.density(self.graph)
-        
-        return result
-    
-    def find_critical_nodes(self) -> List[str]:
-        """
-        查找图中的关键节点（删除后会增加连通分量数量的节点）
-        
-        Returns:
-            List[str]: 关键节点ID列表
-        """
-        try:
-            return list(nx.articulation_points(self.graph.to_undirected()))
-        except:
-            # 简单版实现
-            critical_nodes = []
-            original_components = nx.number_connected_components(self.graph.to_undirected())
-            
-            for node in self.graph.nodes():
-                # 创建图的副本
-                G_copy = self.graph.copy()
-                
-                # 移除当前节点
-                G_copy.remove_node(node)
-                
-                # 检查连通分量是否增加
-                new_components = nx.number_connected_components(G_copy.to_undirected())
-                
-                if new_components > original_components:
-                    critical_nodes.append(node)
-            
-            return critical_nodes

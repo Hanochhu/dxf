@@ -8,7 +8,7 @@ import os
 import networkx as nx
 from typing import List, Dict, Tuple, Optional, Set, Any, Union
 
-from core.data_structures import Block, Connection
+from src.core.data_structures import Block, Connection
 
 
 class CADGraph:

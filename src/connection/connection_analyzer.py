@@ -10,12 +10,12 @@ import math
 from typing import List, Dict, Tuple, Optional, Set, Any
 import networkx as nx
 
-from core.data_structures import (
+from src.core.data_structures import (
     EntityType, Entity, Point, BoundingBox, Block, 
     LineEntity, Connection
 )
-from feature.block_identifier import BlockIdentifier
-from graph.cad_graph import CADGraph
+from src.feature.block_identifier import BlockIdentifier
+from src.graph.cad_graph import CADGraph
 
 
 class ConnectionAnalyzer:

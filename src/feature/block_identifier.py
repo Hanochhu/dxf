@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional, Set, Any
 import os
 
-from core.data_structures import (
+from src.core.data_structures import (
     EntityType, Entity, Point, BoundingBox, Block, BlockFeature
 )
 

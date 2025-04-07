@@ -1,7 +1,15 @@
 #!/usr/bin/env python
 """
-DXF可视化命令行工具
+DXF可视化工具
 提供从命令行直接可视化DXF文件的功能
+结合了dxf_visualization_example.py的示例功能和dxf_visualize_tool.py的完整参数控制
+
+功能包括:
+- 基本DXF文件可视化
+- 块边界和内部结构显示
+- 连接关系分析
+- 图层过滤
+- 自定义视图范围和显示样式
 """
 
 import sys
@@ -10,8 +18,6 @@ import argparse
 from pathlib import Path
 import traceback
 import matplotlib
-# 设置默认后端，避免在无图形界面环境中运行时出错
-matplotlib.use('Agg')
 
 # 添加项目根目录到Python路径
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -67,7 +73,10 @@ def parse_args():
 
 
 def main():
-    """主函数"""
+    """主函数
+    处理命令行参数并执行DXF文件可视化
+    结合了示例文件和工具文件的实现
+    """
     # 解析命令行参数
     args = parse_args()
     
@@ -193,8 +202,9 @@ def main():
                 blocks = filtered_blocks
     
     except Exception as e:
-        print(f"解析DXF文件时出错: {str(e)}")
+        print(f"错误: 无法解析DXF文件: {str(e)}")
         if args.debug:
+            print("\n=== DXF解析错误 ===")
             print("\n=== 错误详情 ===")
             traceback.print_exc()
         return 1

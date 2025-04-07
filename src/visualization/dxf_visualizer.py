@@ -211,8 +211,8 @@ class DXFVisualizer:
             else:
                 block_color = block_colors.get(block.id, self.colors['block'])
             
-            # 仅渲染块的精确边界框
-            if block.bounding_box:
+            # 边界模式: 只渲染边界框
+            if self.block_display_mode == "boundary" and block.bounding_box:
                 width = block.bounding_box.width
                 height = block.bounding_box.height
                 
@@ -229,7 +229,36 @@ class DXFVisualizer:
                 )
                 self.ax.add_patch(rect)
             
-            # 移除旧的标签渲染代码
+            # 结构模式: 渲染块内部实体
+            elif self.block_display_mode == "structure" and hasattr(block, 'entities'):
+                # 渲染块内部所有实体
+                for entity in block.entities:
+                    self.entity_renderer.render_entity(
+                        entity=entity,
+                        ax=self.ax,
+                        color=block_color,
+                        linewidth=1.5 if is_highlighted else 1.0,
+                        linestyle='-',
+                        alpha=1.0,
+                        zorder=5
+                    )
+                
+                # 仍然显示边界框，但用虚线表示
+                if block.bounding_box:
+                    width = block.bounding_box.width
+                    height = block.bounding_box.height
+                    
+                    rect = patches.Rectangle(
+                        (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
+                        width, height,
+                        linewidth=1.0,
+                        edgecolor=block_color,
+                        facecolor='none',
+                        alpha=0.7,
+                        zorder=10,
+                        linestyle='--'
+                    )
+                    self.ax.add_patch(rect)
     
     def render_connections(self, connections: List[Any], highlight_ids: List[str] = None):
         """

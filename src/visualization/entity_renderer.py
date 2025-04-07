@@ -52,7 +52,9 @@ class EntityRenderer:
             EntityType.POLYLINE: self.render_polyline,
             EntityType.LWPOLYLINE: self.render_polyline,  # 轻量级多段线使用相同的渲染方法
             EntityType.SPLINE: self.render_spline,
-            EntityType.UNKNOWN: self.render_unknown,  # 添加UNKNOWN实体的处理
+            EntityType.ARROW: self.render_arrow,  # 箭头类型
+            EntityType.INSERT: self.render_insert,  # 块插入类型
+            EntityType.UNKNOWN: self.render_unknown,
         }
     
     def render_entity(self, entity: Entity, ax: plt.Axes, **kwargs):
@@ -446,8 +448,100 @@ class EntityRenderer:
                     
                     ax.add_patch(polygon)
     
-    def render_unknown(self, entity: Any, ax: plt.Axes, 
-                      color: str = '#999999', linewidth: float = 0.5, 
+    def render_arrow(self, entity: Any, ax: plt.Axes,
+                   color: str = '#ff0000', linewidth: float = 1.5,
+                   alpha: float = 1.0, zorder: int = 15, **kwargs):
+        """
+        渲染箭头实体
+        
+        Args:
+            entity: 箭头实体
+            ax: Matplotlib轴对象
+            color: 颜色
+            linewidth: 线宽
+            alpha: 透明度
+            zorder: 图层顺序
+            **kwargs: 其他参数
+        """
+        if not hasattr(entity, 'start_point') or not hasattr(entity, 'end_point'):
+            print(f"警告: 箭头实体缺少起点或终点")
+            return
+            
+        # 绘制箭头线
+        ax.plot(
+            [entity.start_point.x, entity.end_point.x],
+            [entity.start_point.y, entity.end_point.y],
+            color=color,
+            linewidth=linewidth,
+            alpha=alpha,
+            zorder=zorder
+        )
+        
+        # 计算箭头方向
+        dx = entity.end_point.x - entity.start_point.x
+        dy = entity.end_point.y - entity.start_point.y
+        length = math.sqrt(dx*dx + dy*dy)
+        
+        if length > 0:
+            # 添加箭头头部
+            ax.arrow(
+                entity.end_point.x - dx*0.1,
+                entity.end_point.y - dy*0.1,
+                dx*0.1, dy*0.1,
+                head_width=length*0.1,
+                head_length=length*0.2,
+                fc=color,
+                ec=color,
+                alpha=alpha,
+                zorder=zorder
+            )
+
+    def render_insert(self, entity: Any, ax: plt.Axes,
+                    color: str = '#00ff00', linewidth: float = 1.0,
+                    alpha: float = 0.7, zorder: int = 10, **kwargs):
+        """
+        渲染块插入实体
+        
+        Args:
+            entity: 块插入实体
+            ax: Matplotlib轴对象
+            color: 颜色
+            linewidth: 线宽
+            alpha: 透明度
+            zorder: 图层顺序
+            **kwargs: 其他参数
+        """
+        if not hasattr(entity, 'position'):
+            print(f"警告: 块插入实体缺少位置信息")
+            return
+            
+        # 绘制块插入位置标记
+        ax.scatter(
+            entity.position.x,
+            entity.position.y,
+            color=color,
+            s=50,
+            alpha=alpha,
+            zorder=zorder,
+            marker='s'  # 方形标记
+        )
+        
+        # 如果有名称，添加文本标签
+        if hasattr(entity, 'name'):
+            ax.text(
+                entity.position.x,
+                entity.position.y,
+                entity.name,
+                fontsize=8,
+                color=color,
+                ha='center',
+                va='center',
+                alpha=alpha,
+                zorder=zorder+1
+            )
+
+    def render_unknown(self, entity: Any, ax: plt.Axes,
+                      color: str = '#999999', linewidth: float = 0.5,
                       linestyle: str = ':', alpha: float = 0.5, zorder: int = 1, **kwargs):
         """
         渲染未知类型的实体

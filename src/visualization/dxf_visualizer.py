@@ -211,69 +211,25 @@ class DXFVisualizer:
             else:
                 block_color = block_colors.get(block.id, self.colors['block'])
             
-            # 根据模式选择渲染方式
-            if self.block_display_mode == "boundary":
-                # 边界框模式：只渲染块的边界框，使用半透明填充色
-                if block.bounding_box:
-                    width = block.bounding_box.width
-                    height = block.bounding_box.height
-                    
-                    # 创建矩形边界框
-                    rect = patches.Rectangle(
-                        (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
-                        width, height,
-                        linewidth=2.0 if is_highlighted else 1.5,
-                        edgecolor=block_color,
-                        facecolor=block_color,  # 使用相同的颜色，但透明度不同
-                        alpha=0.3,  # 半透明填充
-                        zorder=10  # 确保在基本实体上方
-                    )
-                    self.ax.add_patch(rect)
-            else:
-                # 结构模式：渲染块内的所有实体，不显示边界框
-                if hasattr(block, 'entities') and block.entities:
-                    for entity in block.entities:
-                        # 使用块的颜色渲染实体
-                        self.entity_renderer.render_entity(
-                            entity=entity,
-                            ax=self.ax,
-                            color=block_color,
-                            linewidth=2.0 if is_highlighted else 1.5,  # 更粗的线条以便更明显
-                            linestyle=self.line_styles['solid'],
-                            alpha=1.0,  # 完全不透明
-                            zorder=15  # 确保显示在其他元素上方
-                        )
-            
-            # 添加块名称标签 - 使用中文字体
-            if self.show_block_labels and hasattr(block, 'center') and block.center:
-                # 优化块名称显示：不使用截断方式，而是直接显示完整名称
-                # 名称规范化：去除名称开头的空白并规范化
-                display_name = block.name.strip()
+            # 仅渲染块的精确边界框
+            if block.bounding_box:
+                width = block.bounding_box.width
+                height = block.bounding_box.height
                 
-                # 避免标签框太小
-                padding = 5  # 增加内边距
-                label_box_props = {
-                    'facecolor': 'white',
-                    'edgecolor': block_color,
-                    'alpha': 0.9,  # 更高的不透明度
-                    'pad': padding,
-                    'boxstyle': 'round,pad=0.5',  # 圆角矩形
-                    'linewidth': 1.5  # 边框更粗
-                }
-                
-                # 文本对象
-                text_obj = self.ax.text(
-                    block.center.x, block.center.y, 
-                    display_name,
-                    horizontalalignment='center',
-                    verticalalignment='center',
-                    fontsize=self.block_label_size,
-                    color='black',
-                    fontweight='bold',  # 文字加粗
-                    bbox=label_box_props,
-                    fontproperties=chinese_font,  # 使用中文字体
-                    zorder=20  # 确保文本显示在最上层
+                # 创建精确的边界框
+                rect = patches.Rectangle(
+                    (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
+                    width, height,
+                    linewidth=1.5 if is_highlighted else 1.0,
+                    edgecolor=block_color,
+                    facecolor='none',  # 无填充
+                    alpha=1.0,  # 完全不透明
+                    zorder=10,
+                    linestyle='-'
                 )
+                self.ax.add_patch(rect)
+            
+            # 移除旧的标签渲染代码
     
     def render_connections(self, connections: List[Any], highlight_ids: List[str] = None):
         """

@@ -244,7 +244,7 @@ def main():
         figsize = (12, 8)
     
     # 创建图表
-    visualizer.create_figure(figsize=figsize, dpi=args.dpi)
+    # visualizer.create_figure(figsize=figsize, dpi=args.dpi)  # 避免重复创建空白figure
     
     # 如果需要，识别块并分析连接
     connections = []

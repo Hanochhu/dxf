@@ -233,15 +233,25 @@ class DXFVisualizer:
             elif self.block_display_mode == "structure" and hasattr(block, 'entities'):
                 # 渲染块内部所有实体
                 for entity in block.entities:
-                    self.entity_renderer.render_entity(
-                        entity=entity,
-                        ax=self.ax,
-                        color=block_color,
-                        linewidth=1.5 if is_highlighted else 1.0,
-                        linestyle='-',
-                        alpha=1.0,
-                        zorder=5
-                    )
+                    # 跳过没有边界框的实体
+                    if not hasattr(entity, 'bounding_box') or not entity.bounding_box:
+                        if self.debug_mode:
+                            print(f"跳过无边界框的实体: {entity.id} (类型: {getattr(entity, 'entity_type', 'UNKNOWN')})")
+                        continue
+                        
+                    try:
+                        self.entity_renderer.render_entity(
+                            entity=entity,
+                            ax=self.ax,
+                            color=block_color,
+                            linewidth=1.5 if is_highlighted else 1.0,
+                            linestyle='-',
+                            alpha=1.0,
+                            zorder=5
+                        )
+                    except Exception as e:
+                        if self.debug_mode:
+                            print(f"渲染实体 {entity.id} 时出错: {str(e)}")
                 
                 # 仍然显示边界框，但用虚线表示
                 if block.bounding_box:

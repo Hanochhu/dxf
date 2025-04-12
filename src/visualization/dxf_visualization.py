@@ -113,7 +113,7 @@ class DXFVisualization:
             self.ax.set_aspect('equal')
         
         # 获取DXF中的所有实体
-        entities = self.dxf_processor.get_entities()
+        entities = self.dxf_processor.get_basic_entities()
         
         # 过滤实体
         if layer_filter:

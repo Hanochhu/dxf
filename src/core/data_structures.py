@@ -458,6 +458,7 @@ class BlockReference:
     rotation: float
     scale: Tuple[float, float, float]
     attributes: List[AttributeInfo] = field(default_factory=list)
+    entity_type: EntityType = EntityType.INSERT  # BlockReference对应INSERT类型实体
     
     def to_dict(self) -> Dict:
         """转换为字典表示"""
@@ -479,7 +480,8 @@ class BlockReference:
             position=Point.from_tuple(data['position']),
             rotation=data['rotation'],
             scale=data['scale'],
-            attributes=[AttributeInfo.from_dict(attr) for attr in data.get('attributes', [])]
+            attributes=[AttributeInfo.from_dict(attr) for attr in data.get('attributes', [])],
+            entity_type=EntityType.INSERT if "EntityType" in globals() else None
         )
 
 

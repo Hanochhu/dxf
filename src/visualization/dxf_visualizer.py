@@ -148,6 +148,8 @@ class DXFVisualizer:
         
         # 渲染每个实体
         for entity in entities:
+            if isinstance(entity, Block):  # 跳过Block定义
+                continue
             is_highlighted = entity.id in highlight_ids
             
             self.entity_renderer.render_entity(

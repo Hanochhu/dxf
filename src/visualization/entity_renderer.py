@@ -599,4 +599,5 @@ class EntityRenderer:
                 zorder=zorder
             )
             ax.add_patch(rect)
-        # 如果没有任何可用信息，不渲染任何内容 
+        # 如果没有任何可用信息，不渲染任何内容
+        print(f"未被渲染的实体: {entity}，类型: {type(entity)}")

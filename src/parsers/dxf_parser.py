@@ -34,8 +34,8 @@ class DXFBackendBase:
         """加载DXF文件"""
         raise NotImplementedError("子类必须实现此方法")
     
-    def get_entities(self) -> List[Dict]:
-        """获取模型空间中的所有实体"""
+    def get_basic_entities(self) -> List[Dict]:
+        """获取模型空间中的基础实体(不包含INSERT实体)"""
         raise NotImplementedError("子类必须实现此方法")
     
     def get_blocks(self) -> Dict[str, Dict]:
@@ -76,15 +76,15 @@ try:
             except Exception as e:
                 raise DXFParseError(f"Failed to load DXF file: {e}")
         
-        def get_entities(self) -> List[Dict]:
-            """获取模型空间中的所有实体"""
+        def get_basic_entities(self) -> List[Dict]:
+            """获取模型空间中的基础实体(不包含INSERT实体)"""
             if not self.modelspace:
                 return []
             
             entities = []
             for entity in self.modelspace:
                 entity_dict = self._convert_entity_to_dict(entity)
-                if entity_dict:
+                if entity_dict and entity_dict.get('type') != 'INSERT':  # 过滤掉INSERT实体
                     entities.append(entity_dict)
             
             return entities
@@ -513,8 +513,8 @@ class SimpleDXFParser:
             elif group_code == 50:
                 entity["rotation"] = float(value)
     
-    def get_entities(self) -> List[Dict]:
-        """获取解析的实体"""
+    def get_basic_entities(self) -> List[Dict]:
+        """获取解析的基础实体(不包含INSERT实体)"""
         return self.entities
     
     def get_blocks(self) -> Dict[str, Dict]:
@@ -590,7 +590,7 @@ class DXFParser(CADFileParser):
         """解析所有实体"""
         entities = []
         
-        entity_dicts = self.backend.get_entities()
+        entity_dicts = self.backend.get_basic_entities()
         
         for entity_dict in entity_dicts:
             entity = self._create_entity_from_dict(entity_dict)
@@ -775,8 +775,20 @@ class DXFParser(CADFileParser):
                         vertices=vertices,
                         is_closed=is_closed
                     )
+            elif entity_type == 'INSERT':
+                # 正确处理块插入实体
+                return BlockReference(
+                    id=entity_dict.get('handle', ''),
+                    name=entity_dict.get('block_name', ''),
+                    position=Point.from_tuple(entity_dict.get('position', (0, 0, 0))),
+                    rotation=entity_dict.get('rotation', 0.0),
+                    scale=entity_dict.get('scale', (1.0, 1.0, 1.0)),
+                    attributes=[AttributeInfo.from_dict(attr) for attr in entity_dict.get('attributes', [])],
+                    entity_type=EntityType.INSERT
+                )
             else:
                 # 其他实体类型
+                print(f"未识别实体类型: {entity_type}, entity_dict: {entity_dict}")
                 return Entity(
                     id=entity_dict.get('handle', self.generate_unique_id('ENTITY_')),
                     entity_type=EntityType.UNKNOWN,

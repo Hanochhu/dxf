@@ -50,9 +50,23 @@ class Point:
         return (self.x, self.y, self.z)
     
     @classmethod
-    def from_tuple(cls, coords: Tuple[float, float, float]) -> 'Point':
-        """从元组创建点"""
-        return cls(coords[0], coords[1], coords[2] if len(coords) > 2 else 0.0)
+    def from_tuple(cls, coords) -> 'Point':
+        """
+        从元组、列表或字典创建点，自动兼容多种格式
+        支持：(x, y, z)、[x, y, z]、{'x':x,'y':y,'z':z}、{'x':x,'y':y}
+        """
+        if isinstance(coords, dict):
+            x = coords.get('x', 0.0)
+            y = coords.get('y', 0.0)
+            z = coords.get('z', 0.0)
+            return cls(x, y, z)
+        elif isinstance(coords, (tuple, list)):
+            x = coords[0] if len(coords) > 0 else 0.0
+            y = coords[1] if len(coords) > 1 else 0.0
+            z = coords[2] if len(coords) > 2 else 0.0
+            return cls(x, y, z)
+        else:
+            raise ValueError("Point.from_tuple 不支持的类型: {}".format(type(coords)))
 
 
 @dataclass
@@ -217,6 +231,21 @@ class Entity:
 @dataclass
 class LineEntity(Entity):
     """线段实体"""
+    start_point: Point = field(default_factory=Point)
+    end_point: Point = field(default_factory=Point)
+
+@dataclass
+class PolylineEntity(Entity):
+    """多段线实体（POLYLINE）"""
+    vertices: List[Point] = field(default_factory=list)
+    is_closed: bool = False
+
+@dataclass
+class LwPolylineEntity(Entity):
+    """轻量级多段线实体（LWPOLYLINE）"""
+    vertices: List[Point] = field(default_factory=list)
+    is_closed: bool = False
+
     start_point: Point = field(default_factory=Point)
     end_point: Point = field(default_factory=Point)
     

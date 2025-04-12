@@ -73,7 +73,7 @@ class DXFVisualizer:
         # 视图设置
         self.margin = 20  # 边距
         self.scale_factor = 1.0  # 缩放因子
-        self.show_grid = True  # 是否显示网格
+        self.show_grid = False  # 是否显示网格（默认关闭，避免多余虚线）
         self.show_axis = True  # 是否显示坐标轴
         self.interactive = True  # 是否启用交互式视图
         self.debug_mode = False  # 调试模式标志
@@ -254,21 +254,21 @@ class DXFVisualizer:
                             print(f"渲染实体 {entity.id} 时出错: {str(e)}")
                 
                 # 仍然显示边界框，但用虚线表示
-                if block.bounding_box:
-                    width = block.bounding_box.width
-                    height = block.bounding_box.height
-                    
-                    rect = patches.Rectangle(
-                        (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
-                        width, height,
-                        linewidth=1.0,
-                        edgecolor=block_color,
-                        facecolor='none',
-                        alpha=0.7,
-                        zorder=10,
-                        linestyle='--'
-                    )
-                    self.ax.add_patch(rect)
+                # if block.bounding_box:
+                #     width = block.bounding_box.width
+                #     height = block.bounding_box.height
+                #
+                #     rect = patches.Rectangle(
+                #         (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
+                #         width, height,
+                #         linewidth=1.0,
+                #         edgecolor=block_color,
+                #         facecolor='none',
+                #         alpha=0.7,
+                #         zorder=10,
+                #         linestyle='--'
+                #     )
+                #     self.ax.add_patch(rect)
     
     def render_connections(self, connections: List[Any], highlight_ids: List[str] = None):
         """

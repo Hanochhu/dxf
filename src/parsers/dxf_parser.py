@@ -759,7 +759,6 @@ class DXFParser(CADFileParser):
                     except Exception:
                         pass
                 is_closed = entity_dict.get('closed', False)
-                print('[DEBUG] vertices:', vertices, [type(v) for v in vertices])
                 if entity_type == 'LWPOLYLINE':
                     return LwPolylineEntity(
                         id=entity_dict.get('handle', self.generate_unique_id('LWPOLYLINE_')),

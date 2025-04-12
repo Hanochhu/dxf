@@ -52,18 +52,24 @@ class Point:
     @classmethod
     def from_tuple(cls, coords) -> 'Point':
         """
-        从元组、列表或字典创建点，自动兼容多种格式
+        从元组、列表或字典创建点，自动兼容多种格式，并强制转换为 float
         支持：(x, y, z)、[x, y, z]、{'x':x,'y':y,'z':z}、{'x':x,'y':y}
         """
+        def to_float(val):
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
+
         if isinstance(coords, dict):
-            x = coords.get('x', 0.0)
-            y = coords.get('y', 0.0)
-            z = coords.get('z', 0.0)
+            x = to_float(coords.get('x', 0.0))
+            y = to_float(coords.get('y', 0.0))
+            z = to_float(coords.get('z', 0.0))
             return cls(x, y, z)
         elif isinstance(coords, (tuple, list)):
-            x = coords[0] if len(coords) > 0 else 0.0
-            y = coords[1] if len(coords) > 1 else 0.0
-            z = coords[2] if len(coords) > 2 else 0.0
+            x = to_float(coords[0]) if len(coords) > 0 else 0.0
+            y = to_float(coords[1]) if len(coords) > 1 else 0.0
+            z = to_float(coords[2]) if len(coords) > 2 else 0.0
             return cls(x, y, z)
         else:
             raise ValueError("Point.from_tuple 不支持的类型: {}".format(type(coords)))
@@ -231,8 +237,8 @@ class Entity:
 @dataclass
 class LineEntity(Entity):
     """线段实体"""
-    start_point: Point = field(default_factory=Point)
-    end_point: Point = field(default_factory=Point)
+    start_point: Point = field(default_factory=lambda: Point(0, 0, 0))
+    end_point: Point = field(default_factory=lambda: Point(0, 0, 0))
 
 @dataclass
 class PolylineEntity(Entity):
@@ -246,8 +252,8 @@ class LwPolylineEntity(Entity):
     vertices: List[Point] = field(default_factory=list)
     is_closed: bool = False
 
-    start_point: Point = field(default_factory=Point)
-    end_point: Point = field(default_factory=Point)
+    start_point: Point = field(default_factory=lambda: Point(0, 0, 0))
+    end_point: Point = field(default_factory=lambda: Point(0, 0, 0))
     
     def __post_init__(self):
         """初始化后计算边界框"""

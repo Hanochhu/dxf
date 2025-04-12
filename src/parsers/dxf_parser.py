@@ -12,7 +12,7 @@ import uuid
 from src.core.data_structures import (
     Point, BoundingBox, EntityType, Entity, LineEntity, 
     CircleEntity, ArcEntity, TextEntity, Block, 
-    BlockReference, AttributeInfo
+    BlockReference, AttributeInfo, PolylineEntity, LwPolylineEntity
 )
 from src.parsers.parser_interface import CADFileParser
 
@@ -208,7 +208,11 @@ try:
                 elif entity_type in ('LWPOLYLINE', 'POLYLINE'):
                     points = []
                     if entity_type == 'LWPOLYLINE':
-                        points = [tuple(p) for p in entity.get_points()]
+                        points = [
+                            (p[0], p[1], p[2] if len(p) > 2 else 0.0)
+                            for p in entity.get_points()
+                            if isinstance(p, (list, tuple)) and len(p) >= 2
+                        ]
                     else:  # POLYLINE
                         points = [tuple(p) for p in entity.points()]
                     
@@ -745,12 +749,33 @@ class DXFParser(CADFileParser):
                     rotation=entity_dict.get('rotation', 0.0)
                 )
             elif entity_type in ('LWPOLYLINE', 'POLYLINE'):
-                # 简化处理，将多段线作为基本实体
-                return Entity(
-                    id=entity_dict.get('handle', self.generate_unique_id('POLYLINE_')),
-                    entity_type=EntityType.POLYLINE,
-                    layer=entity_dict.get('layer', '')
-                )
+                # 正确处理多段线，创建 PolylineEntity/LwPolylineEntity 并传递顶点
+                points = entity_dict.get('points', [])
+                # 调试：打印 points 内容
+                vertices = []
+                for pt in points:
+                    try:
+                        vertices.append(Point.from_tuple(pt))
+                    except Exception:
+                        pass
+                is_closed = entity_dict.get('closed', False)
+                print('[DEBUG] vertices:', vertices, [type(v) for v in vertices])
+                if entity_type == 'LWPOLYLINE':
+                    return LwPolylineEntity(
+                        id=entity_dict.get('handle', self.generate_unique_id('LWPOLYLINE_')),
+                        entity_type=EntityType.LWPOLYLINE,
+                        layer=entity_dict.get('layer', ''),
+                        vertices=vertices,
+                        is_closed=is_closed
+                    )
+                else:
+                    return PolylineEntity(
+                        id=entity_dict.get('handle', self.generate_unique_id('POLYLINE_')),
+                        entity_type=EntityType.POLYLINE,
+                        layer=entity_dict.get('layer', ''),
+                        vertices=vertices,
+                        is_closed=is_closed
+                    )
             else:
                 # 其他实体类型
                 return Entity(

@@ -2,25 +2,32 @@
 
 ```
 src/
-├── core/                 # 核心数据结构
-│   └── data_structures.py
-├── parsers/              # 文件解析模块
-│   ├── parser_interface.py
-│   ├── dxf_parser.py
-│   └── step_parser.py
-├── feature/              # 特征提取和识别
-│   └── block_identifier.py
+├── dxf_block_extractor.py
 ├── connection/           # 连接分析
 │   └── connection_analyzer.py
+├── core/                 # 核心数据结构
+│   └── data_structures.py
+├── examples/             # 使用示例
+│   ├── advanced_usage.py
+│   ├── basic_usage.py
+│   └── dxf_visualization_example.py
+├── feature/              # 特征提取和识别
+│   └── block_identifier.py
 ├── graph/                # 图构建
 │   └── cad_graph.py
+├── parsers/              # 文件解析模块
+│   ├── dxf_parser.py
+│   ├── parser_interface.py
+│   └── step_parser.py
 ├── query/                # 查询接口
 │   └── cad_query.py
 ├── system/               # 系统整合
 │   └── cad_analysis_system.py
-└── examples/             # 使用示例
-    ├── basic_usage.py
-    └── advanced_usage.py
+└── visualization/        # 可视化模块
+    ├── dxf_visualization.py
+    ├── dxf_visualize_tool.py
+    ├── dxf_visualizer.py
+    └── entity_renderer.py
 ```
 
 ## 使用步骤

@@ -6,6 +6,8 @@
 import math
 from dataclasses import dataclass, field
 from typing import List, Dict, Set, Tuple, Optional, Any, Union
+
+# from abc import ABC, abstractmethod
 from enum import Enum
 
 
@@ -177,6 +179,7 @@ class BoundingBox:
         max_z = max(p.z for p in max_points)
         return cls(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
 
+
 @dataclass
 class AttributeInfo:
     """属性信息类"""
@@ -222,10 +225,20 @@ class Entity:
     id: str
     entity_type: EntityType
     layer: str
+
     @property
     def bounding_box(self) -> Optional[BoundingBox]:
         """所有实体必须实现自己的边界框计算"""
         raise NotImplementedError("子类必须实现 bounding_box 属性")
+
+    def to_dict(self) -> dict:
+        """必须由子类实现：序列化为字典"""
+        raise NotImplementedError("子类必须实现 to_dict 方法")
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Entity":
+        """必须由子类实现：从字典反序列化"""
+        raise NotImplementedError("子类必须实现 from_dict 方法")
 
     def get_feature_vector(self) -> List[float]:
         """生成实体的特征向量（用于识别）"""
@@ -251,6 +264,30 @@ class Entity:
             }
         return result
 
+@dataclass
+class UnknownEntity(Entity):
+    """未知类型实体，作为兜底用"""
+    extra_data: dict = field(default_factory=dict)
+
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        return None
+
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["extra_data"] = self.extra_data
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UnknownEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            extra_data=data.get("extra_data", {})
+        )
+
 
 @dataclass
 class EllipseEntity(Entity):
@@ -265,7 +302,11 @@ class EllipseEntity(Entity):
     @property
     def bounding_box(self) -> Optional[BoundingBox]:
         """返回椭圆的边界框（简化：不考虑旋转，仅主轴方向）"""
-        if not hasattr(self, 'center') or not hasattr(self, 'major_radius') or not hasattr(self, 'minor_radius'):
+        if (
+            not hasattr(self, "center")
+            or not hasattr(self, "major_radius")
+            or not hasattr(self, "minor_radius")
+        ):
             return None
         min_x = self.center.x - self.major_radius
         max_x = self.center.x + self.major_radius
@@ -286,7 +327,9 @@ class LeaderEntity(Entity):
         """返回引线的边界框"""
         if not self.vertices:
             return None
-        pts = [p if isinstance(p, Point) else Point.from_tuple(p) for p in self.vertices]
+        pts = [
+            p if isinstance(p, Point) else Point.from_tuple(p) for p in self.vertices
+        ]
         return BoundingBox.from_points(pts)
 
     vertices: list
@@ -380,7 +423,6 @@ class LwPolylineEntity(Entity):
     vertices: List[Point] = field(default_factory=list)
     is_closed: bool = False
 
-
     @property
     def bounding_box(self) -> Optional[BoundingBox]:
         """返回多段线的边界框"""
@@ -404,7 +446,6 @@ class LwPolylineEntity(Entity):
         if not self.vertices:
             return None
         return BoundingBox.from_points(self.vertices)
-
 
     def get_direction(self) -> Tuple[float, float, float]:
         """获取方向向量（标准化）"""
@@ -460,17 +501,12 @@ class CircleEntity(Entity):
     def bounding_box(self) -> BoundingBox:
         """返回圆的边界框"""
         min_point = Point(
-            self.center.x - self.radius,
-            self.center.y - self.radius,
-            self.center.z
+            self.center.x - self.radius, self.center.y - self.radius, self.center.z
         )
         max_point = Point(
-            self.center.x + self.radius,
-            self.center.y + self.radius,
-            self.center.z
+            self.center.x + self.radius, self.center.y + self.radius, self.center.z
         )
         return BoundingBox(min_point, max_point)
-
 
     def __post_init__(self):
         """初始化后计算边界框"""
@@ -522,17 +558,12 @@ class ArcEntity(Entity):
     def bounding_box(self) -> BoundingBox:
         """返回弧的边界框（简化为整圆外接矩形）"""
         min_point = Point(
-            self.center.x - self.radius,
-            self.center.y - self.radius,
-            self.center.z
+            self.center.x - self.radius, self.center.y - self.radius, self.center.z
         )
         max_point = Point(
-            self.center.x + self.radius,
-            self.center.y + self.radius,
-            self.center.z
+            self.center.x + self.radius, self.center.y + self.radius, self.center.z
         )
         return BoundingBox(min_point, max_point)
-
 
     def __post_init__(self):
         """初始化后计算边界框"""

@@ -12,7 +12,6 @@ import uuid
 
 from src.core.data_structures import (
     Point,
-    BoundingBox,
     EntityType,
     Entity,
     LineEntity,
@@ -28,6 +27,7 @@ from src.core.data_structures import (
     LeaderEntity,
     SolidEntity,
     PointEntity,
+    UnknownEntity,
 )
 from src.parsers.parser_interface import CADFileParser
 
@@ -935,10 +935,12 @@ class DXFParser(CADFileParser):
             else:
                 # 其他实体类型
                 print(f"未识别实体类型: {entity_type}, entity_dict: {entity_dict}")
-                return Entity(
+
+                return UnknownEntity(
                     id=entity_dict.get("handle", self.generate_unique_id("ENTITY_")),
                     entity_type=EntityType.UNKNOWN,
                     layer=entity_dict.get("layer", ""),
+                    extra_data=entity_dict,
                 )
         except Exception as e:
             print(f"Error creating entity of type {entity_type}: {e}")

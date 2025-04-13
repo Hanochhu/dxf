@@ -218,27 +218,33 @@ class AttributeInfo:
         )
 
 
+from abc import ABC, abstractmethod
+
+
 @dataclass
-class Entity:
-    """基础实体类"""
+class Entity(ABC):
+    """基础实体抽象类"""
 
     id: str
     entity_type: EntityType
     layer: str
 
     @property
+    @abstractmethod
     def bounding_box(self) -> Optional[BoundingBox]:
         """所有实体必须实现自己的边界框计算"""
-        raise NotImplementedError("子类必须实现 bounding_box 属性")
+        pass
 
+    @abstractmethod
     def to_dict(self) -> dict:
         """必须由子类实现：序列化为字典"""
-        raise NotImplementedError("子类必须实现 to_dict 方法")
+        pass
 
     @classmethod
+    @abstractmethod
     def from_dict(cls, data: dict) -> "Entity":
         """必须由子类实现：从字典反序列化"""
-        raise NotImplementedError("子类必须实现 from_dict 方法")
+        pass
 
     def get_feature_vector(self) -> List[float]:
         """生成实体的特征向量（用于识别）"""
@@ -251,22 +257,11 @@ class Entity:
             self.bounding_box.aspect_ratio,
         ]
 
-    def to_dict(self) -> dict:
-        result = {
-            "id": self.id,
-            "type": self.entity_type.value,
-            "layer": self.layer,
-        }
-        if self.bounding_box:
-            result["bounding_box"] = {
-                "min": self.bounding_box.min_point.to_tuple(),
-                "max": self.bounding_box.max_point.to_tuple(),
-            }
-        return result
 
 @dataclass
 class UnknownEntity(Entity):
     """未知类型实体，作为兜底用"""
+
     extra_data: dict = field(default_factory=dict)
 
     @property
@@ -285,7 +280,7 @@ class UnknownEntity(Entity):
             id=base_entity.id,
             entity_type=base_entity.entity_type,
             layer=base_entity.layer,
-            extra_data=data.get("extra_data", {})
+            extra_data=data.get("extra_data", {}),
         )
 
 
@@ -318,9 +313,43 @@ class EllipseEntity(Entity):
 
     rotation_angle: float
 
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result.update(
+            {
+                "center": self.center.to_tuple(),
+                "major_axis": self.major_axis,
+                "ratio": self.ratio,
+                "start_param": self.start_param,
+                "end_param": self.end_param,
+                "major_radius": self.major_radius,
+                "minor_radius": self.minor_radius,
+                "rotation_angle": getattr(self, "rotation_angle", 0.0),
+            }
+        )
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "EllipseEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            center=Point.from_tuple(data["center"]),
+            major_axis=tuple(data["major_axis"]),
+            ratio=data["ratio"],
+            start_param=data["start_param"],
+            end_param=data["end_param"],
+            major_radius=data["major_radius"],
+            minor_radius=data["minor_radius"],
+            rotation_angle=data.get("rotation_angle", 0.0),
+        )
+
 
 @dataclass
 class LeaderEntity(Entity):
+    vertices: list
 
     @property
     def bounding_box(self) -> Optional[BoundingBox]:
@@ -332,7 +361,22 @@ class LeaderEntity(Entity):
         ]
         return BoundingBox.from_points(pts)
 
-    vertices: list
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["vertices"] = [
+            p.to_tuple() if isinstance(p, Point) else tuple(p) for p in self.vertices
+        ]
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LeaderEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            vertices=[Point.from_tuple(p) for p in data.get("vertices", [])],
+        )
 
 
 @dataclass
@@ -344,6 +388,23 @@ class SolidEntity(Entity):
         """返回四个顶点的边界框"""
         pts = [p if isinstance(p, Point) else Point.from_tuple(p) for p in self.points]
         return BoundingBox.from_points(pts)
+
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["points"] = [
+            p.to_tuple() if isinstance(p, Point) else tuple(p) for p in self.points
+        ]
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SolidEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            points=[Point.from_tuple(p) for p in data.get("points", [])],
+        )
 
 
 @dataclass
@@ -407,6 +468,23 @@ class LineEntity(Entity):
         max_z = max(self.start_point.z, self.end_point.z)
         return BoundingBox(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
 
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["start_point"] = self.start_point.to_tuple()
+        result["end_point"] = self.end_point.to_tuple()
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LineEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            start_point=Point.from_tuple(data["start_point"]),
+            end_point=Point.from_tuple(data["end_point"]),
+        )
+
 
 @dataclass
 class PolylineEntity(Entity):
@@ -414,6 +492,25 @@ class PolylineEntity(Entity):
 
     vertices: List[Point] = field(default_factory=list)
     is_closed: bool = False
+
+    def to_dict(self) -> dict:
+        result = super().to_dict()
+        result["vertices"] = [
+            p.to_tuple() if isinstance(p, Point) else tuple(p) for p in self.vertices
+        ]
+        result["is_closed"] = self.is_closed
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PolylineEntity":
+        base_entity = Entity.from_dict(data)
+        return cls(
+            id=base_entity.id,
+            entity_type=base_entity.entity_type,
+            layer=base_entity.layer,
+            vertices=[Point.from_tuple(p) for p in data.get("vertices", [])],
+            is_closed=data.get("is_closed", False),
+        )
 
 
 @dataclass

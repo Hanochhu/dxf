@@ -1,3 +1,1 @@
-from .connection_analyzer import (
-    ConnectionAnalyzer, ConnectionClassifier
-)
+from .connection_analyzer import ConnectionAnalyzer, ConnectionClassifier

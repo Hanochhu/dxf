@@ -1,4 +1,6 @@
 from .block_identifier import (
-    BlockFeatureExtractor, BlockIdentifier,
-    BlockClusterAnalyzer, BlockLayoutAnalyzer
+    BlockFeatureExtractor,
+    BlockIdentifier,
+    BlockClusterAnalyzer,
+    BlockLayoutAnalyzer,
 )

@@ -456,6 +456,22 @@ class CircleEntity(Entity):
     center: Point = field(default_factory=Point)
     radius: float = 0.0
 
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回圆的边界框"""
+        min_point = Point(
+            self.center.x - self.radius,
+            self.center.y - self.radius,
+            self.center.z
+        )
+        max_point = Point(
+            self.center.x + self.radius,
+            self.center.y + self.radius,
+            self.center.z
+        )
+        return BoundingBox(min_point, max_point)
+
+
     def __post_init__(self):
         """初始化后计算边界框"""
         if not self.bounding_box:
@@ -501,6 +517,22 @@ class ArcEntity(Entity):
     radius: float = 0.0
     start_angle: float = 0.0
     end_angle: float = 0.0
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回弧的边界框（简化为整圆外接矩形）"""
+        min_point = Point(
+            self.center.x - self.radius,
+            self.center.y - self.radius,
+            self.center.z
+        )
+        max_point = Point(
+            self.center.x + self.radius,
+            self.center.y + self.radius,
+            self.center.z
+        )
+        return BoundingBox(min_point, max_point)
+
 
     def __post_init__(self):
         """初始化后计算边界框"""

@@ -158,6 +158,24 @@ class BoundingBox:
 
         return cls(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
 
+    @classmethod
+    def from_entities(cls, entities: List["Entity"]) -> Optional["BoundingBox"]:
+        """从实体列表创建整体边界框（跳过无效 bounding_box 的实体）"""
+        min_points = []
+        max_points = []
+        for e in entities:
+            if hasattr(e, "bounding_box") and e.bounding_box:
+                min_points.append(e.bounding_box.min_point)
+                max_points.append(e.bounding_box.max_point)
+        if not min_points or not max_points:
+            return None
+        min_x = min(p.x for p in min_points)
+        min_y = min(p.y for p in min_points)
+        min_z = min(p.z for p in min_points)
+        max_x = max(p.x for p in max_points)
+        max_y = max(p.y for p in max_points)
+        max_z = max(p.z for p in max_points)
+        return cls(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
 
 @dataclass
 class AttributeInfo:
@@ -204,7 +222,10 @@ class Entity:
     id: str
     entity_type: EntityType
     layer: str
-    bounding_box: Optional[BoundingBox] = field(default=None, init=False)
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """所有实体必须实现自己的边界框计算"""
+        raise NotImplementedError("子类必须实现 bounding_box 属性")
 
     def get_feature_vector(self) -> List[float]:
         """生成实体的特征向量（用于识别）"""
@@ -217,6 +238,19 @@ class Entity:
             self.bounding_box.aspect_ratio,
         ]
 
+    def to_dict(self) -> dict:
+        result = {
+            "id": self.id,
+            "type": self.entity_type.value,
+            "layer": self.layer,
+        }
+        if self.bounding_box:
+            result["bounding_box"] = {
+                "min": self.bounding_box.min_point.to_tuple(),
+                "max": self.bounding_box.max_point.to_tuple(),
+            }
+        return result
+
 
 @dataclass
 class EllipseEntity(Entity):
@@ -227,11 +261,34 @@ class EllipseEntity(Entity):
     end_param: float
     major_radius: float
     minor_radius: float
+
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """返回椭圆的边界框（简化：不考虑旋转，仅主轴方向）"""
+        if not hasattr(self, 'center') or not hasattr(self, 'major_radius') or not hasattr(self, 'minor_radius'):
+            return None
+        min_x = self.center.x - self.major_radius
+        max_x = self.center.x + self.major_radius
+        min_y = self.center.y - self.minor_radius
+        max_y = self.center.y + self.minor_radius
+        min_z = self.center.z
+        max_z = self.center.z
+        return BoundingBox(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
+
     rotation_angle: float
 
 
 @dataclass
 class LeaderEntity(Entity):
+
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """返回引线的边界框"""
+        if not self.vertices:
+            return None
+        pts = [p if isinstance(p, Point) else Point.from_tuple(p) for p in self.vertices]
+        return BoundingBox.from_points(pts)
+
     vertices: list
 
 
@@ -296,6 +353,17 @@ class LineEntity(Entity):
     start_point: Point = field(default_factory=lambda: Point(0, 0, 0))
     end_point: Point = field(default_factory=lambda: Point(0, 0, 0))
 
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回线段的边界框"""
+        min_x = min(self.start_point.x, self.end_point.x)
+        min_y = min(self.start_point.y, self.end_point.y)
+        min_z = min(self.start_point.z, self.end_point.z)
+        max_x = max(self.start_point.x, self.end_point.x)
+        max_y = max(self.start_point.y, self.end_point.y)
+        max_z = max(self.start_point.z, self.end_point.z)
+        return BoundingBox(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
+
 
 @dataclass
 class PolylineEntity(Entity):
@@ -312,6 +380,14 @@ class LwPolylineEntity(Entity):
     vertices: List[Point] = field(default_factory=list)
     is_closed: bool = False
 
+
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """返回多段线的边界框"""
+        if not self.vertices:
+            return None
+        return BoundingBox.from_points(self.vertices)
+
     start_point: Point = field(default_factory=lambda: Point(0, 0, 0))
     end_point: Point = field(default_factory=lambda: Point(0, 0, 0))
 
@@ -322,13 +398,13 @@ class LwPolylineEntity(Entity):
             min_y = min(self.start_point.y, self.end_point.y)
             min_z = min(self.start_point.z, self.end_point.z)
 
-            max_x = max(self.start_point.x, self.end_point.x)
-            max_y = max(self.start_point.y, self.end_point.y)
-            max_z = max(self.start_point.z, self.end_point.z)
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """返回轻量级多段线的边界框"""
+        if not self.vertices:
+            return None
+        return BoundingBox.from_points(self.vertices)
 
-            self.bounding_box = BoundingBox(
-                Point(min_x, min_y, min_z), Point(max_x, max_y, max_z)
-            )
 
     def get_direction(self) -> Tuple[float, float, float]:
         """获取方向向量（标准化）"""
@@ -368,7 +444,6 @@ class LwPolylineEntity(Entity):
             id=base_entity.id,
             entity_type=base_entity.entity_type,
             layer=base_entity.layer,
-            bounding_box=base_entity.bounding_box,
             start_point=Point.from_tuple(data["start_point"]),
             end_point=Point.from_tuple(data["end_point"]),
         )
@@ -481,6 +556,19 @@ class TextEntity(Entity):
     text: str = ""
     position: Point = field(default_factory=Point)
     height: float = 0.0
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回文本的边界框（简化版）"""
+        text_width = len(self.text) * self.height * 0.6
+        min_x = self.position.x
+        min_y = self.position.y - self.height
+        max_x = self.position.x + text_width
+        max_y = self.position.y + self.height
+        min_z = self.position.z
+        max_z = self.position.z
+        return BoundingBox(Point(min_x, min_y, min_z), Point(max_x, max_y, max_z))
+
     rotation: float = 0.0
 
     def __post_init__(self):

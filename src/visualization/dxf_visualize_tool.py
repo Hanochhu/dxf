@@ -287,8 +287,8 @@ def main():
         print("警告：无法解析图表尺寸，使用默认值(12,8)")
         figsize = (12, 8)
 
-    # 创建图表
-    visualizer.create_figure(figsize=figsize, dpi=args.dpi)
+    # # 创建图表
+    # visualizer.create_figure(figsize=figsize, dpi=args.dpi)
 
     # 如果需要，识别块并分析连接
     connections = []

@@ -446,7 +446,7 @@ class PointEntity(Entity):
             id=data["id"],
             entity_type=EntityType(data["type"]),
             layer=data["layer"],
-            bounding_box=bbox,
+            position=Point.from_tuple(data["position"]),
         )
 
 
@@ -491,6 +491,14 @@ class PolylineEntity(Entity):
     """多段线实体（POLYLINE）"""
 
     vertices: List[Point] = field(default_factory=list)
+
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
+        """返回多段线的边界框"""
+        if not self.vertices:
+            return None
+        return BoundingBox.from_points(self.vertices)
+
     is_closed: bool = False
 
     def to_dict(self) -> dict:
@@ -529,20 +537,6 @@ class LwPolylineEntity(Entity):
 
     start_point: Point = field(default_factory=lambda: Point(0, 0, 0))
     end_point: Point = field(default_factory=lambda: Point(0, 0, 0))
-
-    def __post_init__(self):
-        """初始化后计算边界框"""
-        if not self.bounding_box:
-            min_x = min(self.start_point.x, self.end_point.x)
-            min_y = min(self.start_point.y, self.end_point.y)
-            min_z = min(self.start_point.z, self.end_point.z)
-
-    @property
-    def bounding_box(self) -> Optional[BoundingBox]:
-        """返回轻量级多段线的边界框"""
-        if not self.vertices:
-            return None
-        return BoundingBox.from_points(self.vertices)
 
     def get_direction(self) -> Tuple[float, float, float]:
         """获取方向向量（标准化）"""
@@ -605,22 +599,6 @@ class CircleEntity(Entity):
         )
         return BoundingBox(min_point, max_point)
 
-    def __post_init__(self):
-        """初始化后计算边界框"""
-        if not self.bounding_box:
-            self.bounding_box = BoundingBox(
-                Point(
-                    self.center.x - self.radius,
-                    self.center.y - self.radius,
-                    self.center.z,
-                ),
-                Point(
-                    self.center.x + self.radius,
-                    self.center.y + self.radius,
-                    self.center.z,
-                ),
-            )
-
     def to_dict(self) -> Dict:
         """转换为字典表示"""
         result = super().to_dict()
@@ -636,7 +614,6 @@ class CircleEntity(Entity):
             id=base_entity.id,
             entity_type=base_entity.entity_type,
             layer=base_entity.layer,
-            bounding_box=base_entity.bounding_box,
             center=Point.from_tuple(data["center"]),
             radius=data["radius"],
         )
@@ -662,23 +639,6 @@ class ArcEntity(Entity):
         )
         return BoundingBox(min_point, max_point)
 
-    def __post_init__(self):
-        """初始化后计算边界框"""
-        if not self.bounding_box:
-            # 简化版边界框计算，实际应考虑弧的起止角度
-            self.bounding_box = BoundingBox(
-                Point(
-                    self.center.x - self.radius,
-                    self.center.y - self.radius,
-                    self.center.z,
-                ),
-                Point(
-                    self.center.x + self.radius,
-                    self.center.y + self.radius,
-                    self.center.z,
-                ),
-            )
-
     def to_dict(self) -> Dict:
         """转换为字典表示"""
         result = super().to_dict()
@@ -701,7 +661,6 @@ class ArcEntity(Entity):
             id=base_entity.id,
             entity_type=base_entity.entity_type,
             layer=base_entity.layer,
-            bounding_box=base_entity.bounding_box,
             center=Point.from_tuple(data["center"]),
             radius=data["radius"],
             start_angle=data["start_angle"],
@@ -731,23 +690,6 @@ class TextEntity(Entity):
 
     rotation: float = 0.0
 
-    def __post_init__(self):
-        """初始化后计算边界框（简化版）"""
-        if not self.bounding_box:
-            # 文本边界框计算是粗略的估计
-            text_width = len(self.text) * self.height * 0.6
-
-            min_x = self.position.x
-            min_y = self.position.y - self.height
-
-            max_x = self.position.x + text_width
-            max_y = self.position.y + self.height
-
-            self.bounding_box = BoundingBox(
-                Point(min_x, min_y, self.position.z),
-                Point(max_x, max_y, self.position.z),
-            )
-
     def to_dict(self) -> Dict:
         """转换为字典表示"""
         result = super().to_dict()
@@ -770,7 +712,6 @@ class TextEntity(Entity):
             id=base_entity.id,
             entity_type=base_entity.entity_type,
             layer=base_entity.layer,
-            bounding_box=base_entity.bounding_box,
             text=data["text"],
             position=Point.from_tuple(data["position"]),
             height=data["height"],

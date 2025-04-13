@@ -24,6 +24,9 @@ class EntityType(Enum):
     SPLINE = "SPLINE"
     ARROW = "ARROW"  # 特殊类型：箭头
     UNKNOWN = "UNKNOWN"
+    LEADER = "LEADER"
+    SOLID = "SOLID"
+    POINT = "POINT"
 
 
 @dataclass
@@ -81,10 +84,11 @@ class BoundingBox:
     min_point: Point
     max_point: Point
     
+    
     @property
     def width(self) -> float:
         return self.max_point.x - self.min_point.x
-    
+
     @property
     def height(self) -> float:
         return self.max_point.y - self.min_point.y
@@ -144,6 +148,7 @@ class BoundingBox:
         )
 
 
+
 @dataclass
 class AttributeInfo:
     """属性信息类"""
@@ -181,13 +186,14 @@ class AttributeInfo:
         )
 
 
+
 @dataclass
 class Entity:
     """基础实体类"""
     id: str
     entity_type: EntityType
     layer: str
-    bounding_box: Optional[BoundingBox] = None
+    bounding_box: Optional[BoundingBox] = field(default=None, init=False)
     
     def get_feature_vector(self) -> List[float]:
         """生成实体的特征向量（用于识别）"""
@@ -199,6 +205,41 @@ class Entity:
             self.bounding_box.height,
             self.bounding_box.aspect_ratio
         ]
+
+@dataclass
+class EllipseEntity(Entity):
+    center: Point
+    major_axis: tuple
+    ratio: float
+    start_param: float
+    end_param: float
+    major_radius: float
+    minor_radius: float
+    rotation_angle: float
+
+
+@dataclass
+class LeaderEntity(Entity):
+    vertices: list
+
+@dataclass
+class SolidEntity(Entity):
+    points: list
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回四个顶点的边界框"""
+        pts = [p if isinstance(p, Point) else Point.from_tuple(p) for p in self.points]
+        return BoundingBox.from_points(pts)
+
+@dataclass
+class PointEntity(Entity):
+    position: Point
+
+    @property
+    def bounding_box(self) -> BoundingBox:
+        """返回以该点为中心、边长为0的边界框"""
+        return BoundingBox(self.position, self.position)
     
     def to_dict(self) -> Dict:
         """转换为字典表示"""

@@ -55,6 +55,8 @@ class EntityRenderer:
             EntityType.ARROW: self.render_arrow,  # 箭头类型
             EntityType.INSERT: self.render_insert,  # 块插入类型
             EntityType.UNKNOWN: self.render_unknown,
+            EntityType.LEADER: self.render_leader,
+            EntityType.SOLID: self.render_solid,
         }
     
     def render_entity(self, entity: Entity, ax: plt.Axes, **kwargs):
@@ -230,8 +232,9 @@ class EntityRenderer:
         """
         # 检查实体是否有必需属性
         required_attrs = ['center', 'major_radius', 'minor_radius', 'rotation_angle']
-        if not all(hasattr(entity, attr) for attr in required_attrs):
-            print(f"警告: 椭圆实体缺少必需属性")
+        missing_attrs = [attr for attr in required_attrs if not hasattr(entity, attr)]
+        if missing_attrs:
+            print(f"警告: 椭圆实体缺少必需属性: {', '.join(missing_attrs)}")
             return
         
         # 计算椭圆参数
@@ -539,8 +542,24 @@ class EntityRenderer:
                 alpha=alpha,
                 zorder=zorder+1
             )
+    def render_leader(self, entity: Any, ax: plt.Axes,
+                      color: str = '#00bfff', linewidth: float = 1.0, **kwargs):
+        """渲染 LEADER（引线）实体为折线"""
+        if hasattr(entity, 'vertices') and entity.vertices:
+            xs = [pt.x if hasattr(pt, 'x') else pt[0] for pt in entity.vertices]
+            ys = [pt.y if hasattr(pt, 'y') else pt[1] for pt in entity.vertices]
+            ax.plot(xs, ys, color=color, linewidth=linewidth, **kwargs)
+
+    def render_solid(self, entity: Any, ax: plt.Axes,
+                     color: str = '#a0522d', alpha: float = 0.5, **kwargs):
+        """渲染 SOLID 实体为填充四边形"""
+        if hasattr(entity, 'points') and len(entity.points) == 4:
+            xs = [pt.x if hasattr(pt, 'x') else pt[0] for pt in entity.points]
+            ys = [pt.y if hasattr(pt, 'y') else pt[1] for pt in entity.points]
+            ax.fill(xs, ys, color=color, alpha=alpha, **kwargs)
 
     def render_unknown(self, entity: Any, ax: plt.Axes,
+
                       color: str = '#999999', linewidth: float = 0.5,
                       linestyle: str = ':', alpha: float = 0.5, zorder: int = 1, **kwargs):
         """
@@ -581,10 +600,10 @@ class EntityRenderer:
                 alpha=alpha,
                 zorder=zorder
             )
-        elif hasattr(entity, 'bounding_box') and entity.bounding_box:
+        elif hasattr(entity, 'bounding_box') and entity.bounding_box():
             # 如果有边界框，渲染边界框
-            min_point = entity.bounding_box.min_point
-            max_point = entity.bounding_box.max_point
+            min_point = entity.bounding_box().min_point
+            max_point = entity.bounding_box().max_point
             width = max_point.x - min_point.x
             height = max_point.y - min_point.y
             

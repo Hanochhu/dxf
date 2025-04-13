@@ -7,12 +7,14 @@ DXF文件解析模块
 import os
 import math
 from typing import List, Tuple, Dict, Any, Optional, Set
+import numpy as np
 import uuid
 
 from src.core.data_structures import (
     Point, BoundingBox, EntityType, Entity, LineEntity, 
     CircleEntity, ArcEntity, TextEntity, Block, 
-    BlockReference, AttributeInfo, PolylineEntity, LwPolylineEntity
+    BlockReference, AttributeInfo, PolylineEntity, LwPolylineEntity,
+    EllipseEntity, LeaderEntity, SolidEntity, PointEntity
 )
 from src.parsers.parser_interface import CADFileParser
 
@@ -194,6 +196,46 @@ try:
                         'radius': entity.dxf.radius,
                         'start_angle': entity.dxf.start_angle,
                         'end_angle': entity.dxf.end_angle
+                    }
+                elif entity_type == 'ELLIPSE':
+                    major_axis = tuple(entity.dxf.major_axis)
+                    ratio = entity.dxf.ratio
+                    major_radius = np.linalg.norm(major_axis)
+                    minor_radius = major_radius * ratio
+                    rotation_angle = math.atan2(major_axis[1], major_axis[0])
+                    return {
+                        'type': 'ELLIPSE',
+                        'handle': entity.dxf.handle,
+                        'layer': entity.dxf.layer,
+                        'center': tuple(entity.dxf.center),
+                        'major_axis': major_axis,
+                        'ratio': ratio,
+                        'major_radius': major_radius,
+                        'minor_radius': minor_radius,
+                        'rotation_angle': rotation_angle,
+                        'start_param': entity.dxf.start_param,
+                        'end_param': entity.dxf.end_param
+                    }
+                elif entity_type == 'LEADER':
+                    return {
+                        'type': 'LEADER',
+                        'handle': entity.dxf.handle,
+                        'layer': entity.dxf.layer,
+                        'vertices': [tuple(v) for v in entity.vertices]
+                    }
+                elif entity_type == 'SOLID':
+                    return {
+                        'type': 'SOLID',
+                        'handle': entity.dxf.handle,
+                        'layer': entity.dxf.layer,
+                        'points': [tuple(getattr(entity.dxf, f"vtx{i}")) for i in range(4)]
+                    }
+                elif entity_type == 'POINT':
+                    return {
+                        'type': 'POINT',
+                        'handle': entity.dxf.handle,
+                        'layer': entity.dxf.layer,
+                        'position': tuple(entity.dxf.location)
                     }
                 elif entity_type in ('TEXT', 'MTEXT'):
                     return {
@@ -785,6 +827,41 @@ class DXFParser(CADFileParser):
                     scale=entity_dict.get('scale', (1.0, 1.0, 1.0)),
                     attributes=[AttributeInfo.from_dict(attr) for attr in entity_dict.get('attributes', [])],
                     entity_type=EntityType.INSERT
+                )
+            elif entity_type == 'ELLIPSE':
+                return EllipseEntity(
+                    id=entity_dict.get('handle', self.generate_unique_id('ELLIPSE_')),
+                    entity_type=EntityType.ELLIPSE,
+                    layer=entity_dict.get('layer', ''),
+                    center=Point.from_tuple(entity_dict.get('center', (0, 0, 0))),
+                    major_axis=entity_dict.get('major_axis', (1.0, 0.0, 0.0)),
+                    ratio=entity_dict.get('ratio', 1.0),
+                    start_param=entity_dict.get('start_param', 0.0),
+                    end_param=entity_dict.get('end_param', 0.0),
+                    major_radius=entity_dict.get('major_radius', 1.0),
+                    minor_radius=entity_dict.get('minor_radius', 1.0),
+                    rotation_angle=entity_dict.get('rotation_angle', 0.0)
+                )
+            elif entity_type == 'LEADER':
+                return LeaderEntity(
+                    id=entity_dict.get('handle', self.generate_unique_id('LEADER_')),
+                    entity_type=EntityType.LEADER,
+                    layer=entity_dict.get('layer', ''),
+                    vertices=[Point.from_tuple(v) for v in entity_dict.get('vertices', [])]
+                )
+            elif entity_type == 'SOLID':
+                return SolidEntity(
+                    id=entity_dict.get('handle', self.generate_unique_id('SOLID_')),
+                    entity_type=EntityType.SOLID,
+                    layer=entity_dict.get('layer', ''),
+                    points=[Point.from_tuple(pt) for pt in entity_dict.get('points', [])]
+                )
+            elif entity_type == 'POINT':
+                return PointEntity(
+                    id=entity_dict.get('handle', self.generate_unique_id('POINT_')),
+                    entity_type=EntityType.POINT,
+                    layer=entity_dict.get('layer', ''),
+                    position=Point.from_tuple(entity_dict.get('position', (0, 0, 0)))
                 )
             else:
                 # 其他实体类型

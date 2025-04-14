@@ -120,8 +120,8 @@ class CADGraph:
         self.connections[connection.id] = connection
 
         # 根据连接属性添加方向
-        source_id = connection.source_block.id
-        target_id = connection.target_block.id
+        source_id = connection.source_ref.id
+        target_id = connection.target_ref.id
 
         # 构建边属性
         edge_attrs = {
@@ -607,8 +607,8 @@ class CADGraph:
             for conn_id, conn in self.connections.items():
                 conn_data = {
                     "id": conn.id,
-                    "source_block_id": conn.source_block.id,
-                    "target_block_id": conn.target_block.id,
+                    "source_block_id": conn.source_ref.id,
+                    "target_block_id": conn.target_ref.id,
                     "has_explicit_direction": conn.has_explicit_direction,
                     "connection_type": conn.connection_type,
                     "segment_count": len(conn.path_segments),

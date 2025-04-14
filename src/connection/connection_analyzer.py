@@ -583,8 +583,8 @@ class ConnectionAnalyzer:
         # 添加所有块作为节点
         all_blocks = set()
         for conn in connections:
-            all_blocks.add(conn.source_block.id)
-            all_blocks.add(conn.target_block.id)
+            all_blocks.add(conn.source_ref.id)
+            all_blocks.add(conn.target_ref.id)
 
         for block_id in all_blocks:
             G.add_node(block_id)
@@ -592,13 +592,13 @@ class ConnectionAnalyzer:
         # 添加有明确方向的连接作为边
         for conn in connections:
             if conn.has_explicit_direction:
-                G.add_edge(conn.source_block.id, conn.target_block.id, connection=conn)
+                G.add_edge(conn.source_ref.id, conn.target_ref.id, connection=conn)
 
         # 对每个无方向连接，尝试推断方向
         for conn in connections:
             if not conn.has_explicit_direction:
-                source_id = conn.source_block.id
-                target_id = conn.target_block.id
+                source_id = conn.source_ref.id
+                target_id = conn.target_ref.id
 
                 # 检查是否有从源到目标或从目标到源的路径
                 try:
@@ -607,9 +607,9 @@ class ConnectionAnalyzer:
                         conn.has_explicit_direction = True
                     elif nx.has_path(G, target_id, source_id):
                         # 反转方向（目标到源）
-                        conn.source_block, conn.target_block = (
-                            conn.target_block,
-                            conn.source_block,
+                        conn.source_ref, conn.target_ref = (
+                            conn.target_ref,
+                            conn.source_ref,
                         )
                         conn.has_explicit_direction = True
                 except:
@@ -634,8 +634,8 @@ class ConnectionAnalyzer:
         # 提取所有块
         blocks = set()
         for conn in connections:
-            blocks.add(conn.source_block)
-            blocks.add(conn.target_block)
+            blocks.add(conn.source_ref)
+            blocks.add(conn.target_ref)
 
         # 构建图
         self.cad_graph.build_from_blocks_connections(list(blocks), connections)

@@ -597,8 +597,8 @@ class CADQueryResults:
         """
         info = {
             "id": connection.id,
-            "source_block": connection.source_block.id,
-            "target_block": connection.target_block.id,
+            "source_block": connection.source_ref.id,
+            "target_block": connection.target_ref.id,
             "has_explicit_direction": connection.has_explicit_direction,
             "connection_type": connection.connection_type,
             "segment_count": len(connection.path_segments),

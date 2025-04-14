@@ -22,7 +22,7 @@ class CADAnalysisSystem:
     """CAD分析系统主类"""
 
     def __init__(self):
-        """初始化CAD分析系统"""
+        """初始化CAD分析系统（重构：成员变量与新数据结构对齐）"""
         # 初始化解析器注册中心
         self.parser_registry = ParserRegistry()
 
@@ -36,11 +36,12 @@ class CADAnalysisSystem:
         self.query_interface = CADQueryInterface(self.cad_graph, self.block_identifier)
 
         # 分析状态
-        self.current_file = None
-        self.entities = []
-        self.blocks = []
-        self.connections = []
-        self.additional_info = {}
+        self.current_file: Optional[str] = None
+        self.entities: List[Entity] = []  # 所有基础实体
+        self.block_definitions: List[Block] = []     # 所有块定义
+        self.block_references: List[Any] = []  # 所有块引用（BlockReference），类型用 Any 兼容不同解析器
+        self.connections: List[Connection] = []
+        self.additional_info: Dict = {}
 
     def _register_parsers(self):
         """注册所有可用的解析器"""
@@ -52,7 +53,7 @@ class CADAnalysisSystem:
 
     def analyze_file(self, file_path: str) -> bool:
         """
-        分析CAD文件
+        分析CAD文件（重构：与新数据结构对齐）
 
         Args:
             file_path: 文件路径
@@ -70,18 +71,24 @@ class CADAnalysisSystem:
 
             # 解析文件
             # parse_file 返回四元组: (entities, block_definitions, block_references, additional_info)
-            self.entities, self.block_definitions, self.block_references, self.additional_info = parser.parse_file(
+            entities, block_definitions, block_references, additional_info = parser.parse_file(
                 file_path
             )
+            self.entities = entities
+            self.block_definitions = block_definitions
+            self.block_references = block_references
+            self.additional_info = additional_info
+            # print(f"[调试] block_definitions 数量: {len(block_definitions)}，类型: {[type(b) for b in block_definitions]}")
 
             # 提取线段用于连接分析
             lines = [
                 entity for entity in self.entities if isinstance(entity, LineEntity)
             ]
+            # print(f"[调试] lines 数量: {len(lines)}，类型: {[type(l) for l in lines]}")
 
             # 查找块之间的连接
             self.connections = self.connection_analyzer.find_connections(
-                self.block_definitions, lines
+                self.block_references, lines
             )
 
             # 构建图
@@ -322,8 +329,8 @@ class CADAnalysisSystem:
             in_connections = self.query_interface.get_in_connections(block_id)
             result["in_connections"] = [
                 {
-                    "from_block_id": conn.source_block.id,
-                    "from_block_name": conn.source_block.name,
+                    "from_block_id": conn.source_ref.id,
+                    "from_block_name": conn.source_ref.name,
                     "connection_id": conn.id,
                     "connection_type": conn.connection_type,
                     "has_explicit_direction": conn.has_explicit_direction,
@@ -335,8 +342,8 @@ class CADAnalysisSystem:
             out_connections = self.query_interface.get_out_connections(block_id)
             result["out_connections"] = [
                 {
-                    "to_block_id": conn.target_block.id,
-                    "to_block_name": conn.target_block.name,
+                    "to_block_id": conn.target_ref.id,
+                    "to_block_name": conn.target_ref.name,
                     "connection_id": conn.id,
                     "connection_type": conn.connection_type,
                     "has_explicit_direction": conn.has_explicit_direction,
@@ -366,7 +373,7 @@ class CADAnalysisSystem:
 
     def get_statistics(self) -> Dict:
         """
-        获取分析统计信息
+        获取分析统计信息（重构：基于新数据结构）
 
         Returns:
             Dict: 统计信息
@@ -378,9 +385,10 @@ class CADAnalysisSystem:
         stats = {
             "file_path": self.current_file,
             "entity_count": len(self.entities),
-            "block_count": len(self.blocks),
+            "block_count": len(self.block_definitions),
+            "block_reference_count": len(self.block_references),
             "connection_count": len(self.connections),
-            "arrow_count": sum(1 for block in self.blocks if block.is_arrow),
+            "arrow_count": sum(1 for block in self.block_definitions if hasattr(block, "is_arrow") and block.is_arrow),
             "line_count": sum(
                 1 for entity in self.entities if isinstance(entity, LineEntity)
             ),
@@ -390,7 +398,7 @@ class CADAnalysisSystem:
         # 添加块类型分布
         if self.block_identifier:
             block_types = {}
-            for block in self.blocks:
+            for block in self.block_definitions:
                 matches = self.block_identifier.identify_block(block)
                 if matches:
                     best_match = matches[0]

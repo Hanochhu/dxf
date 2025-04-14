@@ -763,7 +763,8 @@ class BlockReference:
             entity_type=EntityType.INSERT if "EntityType" in globals() else None,
         )
 
-    def get_transformed_bounding_box(self) -> Optional[BoundingBox]:
+    @property
+    def bounding_box(self) -> Optional[BoundingBox]:
         """
         获取经过平移、缩放、旋转后的块边界框（实例空间）
         仅支持平移和缩放，旋转如有需要可补充

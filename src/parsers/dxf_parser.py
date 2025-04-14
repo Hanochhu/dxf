@@ -737,7 +737,7 @@ class DXFParser(CADFileParser):
 
     def _parse_block_instances(self, block_lookup) -> List[Block]:
         """解析所有块引用（INSERT实体）"""
-        block_instances = []
+        block_references = []
 
         inserts = self.backend.get_block_inserts()
         blocks_dict = self.backend.get_blocks()
@@ -781,7 +781,7 @@ class DXFParser(CADFileParser):
                     )
                     attributes.append(attribute)
 
-            # 创建块引用
+            # 创建块引用（直接返回BlockReference，不再包装为Block）
             block_ref = BlockReference(
                 id=insert.get("handle", self.generate_unique_id("INSERT_")),
                 name=block_name,
@@ -792,21 +792,12 @@ class DXFParser(CADFileParser):
                 attributes=attributes,
             )
 
-            # 创建块实例
-            block_instance = Block(
-                id=f"{block_name}_{block_ref.id}",
-                name=block_name,
-                entities=transformed_entities,
-                reference=block_ref,
-                is_arrow=False,  # 稍后检查是否为箭头
-            )
-
-            # 检查是否为箭头
-            block_instance.is_arrow = block_instance.check_is_arrow()
-
-            block_instances.append(block_instance)
-
-        return block_instances
+            block_references.append(block_ref)
+        # 输出所有block_reference的关键信息，便于调试
+        print("[块引用检查] _parse_block_instances 返回的block_references信息：")
+        for i, ref in enumerate(block_references):
+            print(f"  BlockReference{i+1}: id={getattr(ref, 'id', None)}, name={getattr(ref, 'name', None)}, type={type(ref)}, position={getattr(ref, 'position', None)}, rotation={getattr(ref, 'rotation', None)}, scale={getattr(ref, 'scale', None)}")
+        return block_references
 
     def _create_entity_from_dict(self, entity_dict: Dict, block_lookup=None) -> Optional[Entity]:
         """从字典创建实体"""

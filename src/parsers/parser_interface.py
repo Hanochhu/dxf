@@ -16,15 +16,19 @@ class CADFileParser(ABC):
     @abstractmethod
     def parse_file(
         self, file_path: str
-    ) -> Tuple[List[Entity], List[Block], Dict[str, Any]]:
+    ) -> Tuple[List[Entity], List[Block], List[Any], Dict[str, Any]]:
         """
-        解析CAD文件，返回实体、块和附加信息
+        解析CAD文件，严格区分块定义（block_definitions）和块引用（block_references）
 
         Args:
             file_path: 文件路径
 
         Returns:
-            元组：(实体列表, 块列表, 附加信息字典)
+            元组：(实体列表, 块定义列表, 块引用列表, 附加信息字典)
+            - 实体列表: List[Entity]
+            - 块定义列表: List[Block]
+            - 块引用列表: List[BlockReference]（如有其它类型解析器可为Any）
+            - 附加信息字典: Dict[str, Any]
         """
         pass
 

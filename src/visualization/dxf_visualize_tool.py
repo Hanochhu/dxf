@@ -53,7 +53,7 @@ def parse_args():
 
     # 内容控制
     parser.add_argument(
-        "--no-blocks", action="store_true", help="不显示块边界和内部结构"
+        "--no-block_definitions", action="store_true", help="不显示块边界和内部结构"
     )
     parser.add_argument("--no-labels", action="store_true", help="不显示块名称标签")
     parser.add_argument(
@@ -99,7 +99,7 @@ def parse_args():
     parser.add_argument(
         "--highlight-color", type=str, help="高亮颜色", default="#d62728"
     )
-
+    parser.add_argument('--no-blocks', action='store_true', help='不渲染块定义')
     return parser.parse_args()
 
 
@@ -126,25 +126,25 @@ def main():
             print(f"启用调试模式...")
             parser.debug = True
 
-        # parse_file 返回一个包含三个元素的元组: (entities, blocks, additional_info)
+        # parse_file 返回一个包含四个元素的元组: (entities, block_definitions, block_references, additional_info)
         parse_result = parser.parse_file(args.dxf_file)
 
-        # 正确提取实体和块
-        if isinstance(parse_result, tuple) and len(parse_result) >= 2:
-            entities, blocks, additional_info = parse_result
+        # 正确提取实体、块定义和块引用
+        if isinstance(parse_result, tuple) and len(parse_result) >= 4:
+            entities, block_definitions, block_references, additional_info = parse_result
         else:
             # 兼容旧版本或其他返回类型
             if isinstance(parse_result, dict):
                 entities = parse_result.get("entities", [])
-                blocks = parse_result.get("blocks", [])
+                block_definitions = parse_result.get("block_definitions", parse_result.get("blocks", []))
             else:
                 entities = getattr(parse_result, "entities", [])
-                blocks = getattr(parse_result, "blocks", [])
+                block_definitions = getattr(parse_result, "block_definitions", [])
 
         # 调试信息: 显示解析结果
         if args.debug:
             print(f"\n=== DXF解析结果摘要 ===")
-            print(f"解析完成: 找到 {len(entities)} 个实体和 {len(blocks)} 个块")
+            print(f"解析完成: 找到 {len(entities)} 个实体和 {len(block_definitions)} 个块")
 
             # 实体类型统计
             entity_types = {}
@@ -160,14 +160,14 @@ def main():
             print("实体类型统计:", entity_types)
 
             # 显示块信息
-            if blocks and len(blocks) > 0:
+            if block_definitions and len(block_definitions) > 0:
                 print("\n块信息:")
-                for i, block in enumerate(blocks[:5]):  # 只打印前5个
+                for i, block in enumerate(block_definitions[:5]):  # 只打印前5个
                     print(
                         f"  块 {i+1}: {block.name} (含 {len(block.entities) if hasattr(block, 'entities') else 0} 个实体)"
                     )
-                if len(blocks) > 5:
-                    print(f"  ...及其他 {len(blocks)-5} 个块")
+                if len(block_definitions) > 5:
+                    print(f"  ...及其他 {len(block_definitions)-5} 个块")
 
         # 显示图层信息
         if args.show_layers:
@@ -218,7 +218,7 @@ def main():
 
             # 同时过滤块内实体
             filtered_blocks = []
-            for block in blocks:
+            for block in block_definitions:
                 block_entities = []
                 if hasattr(block, "entities"):
                     for entity in block.entities:
@@ -241,7 +241,7 @@ def main():
                     f"已过滤，仅显示图层 '{args.layer}' 中的 {len(filtered_entities)} 个实体和 {len(filtered_blocks)} 个块"
                 )
                 entities = filtered_entities
-                blocks = filtered_blocks
+                block_definitions = filtered_blocks
 
     except Exception as e:
         print(f"错误: 无法解析DXF文件: {str(e)}")
@@ -296,7 +296,7 @@ def main():
         print("正在分析连接关系...")
         # 识别块类型
         block_identifier = BlockIdentifier()
-        for block in blocks:
+        for block in block_definitions:
             block_identifier.identify_block(block)
 
         # 分析连接
@@ -313,19 +313,19 @@ def main():
                     lines.append(entity)
 
         # 分析连接关系
-        connections = connection_analyzer.find_connections(blocks, lines)
+        connections = connection_analyzer.find_connections(block_definitions, lines)
         print(f"找到 {len(connections)} 个连接")
 
     # 高亮特定块
     highlight_block_ids = []
     if args.highlight:
-        for block in blocks:
+        for block in block_definitions:
             if args.highlight.lower() in block.name.lower():
                 highlight_block_ids.append(block.id)
                 print(f"将高亮显示块: {block.name}")
 
     # 确定是否显示块，默认显示，除非明确禁用
-    render_blocks = None if args.no_blocks else blocks
+    render_blocks = None if args.no_blocks else block_references
 
     # 渲染DXF内容
     print("正在渲染DXF内容...")
@@ -359,7 +359,7 @@ def main():
     # 高亮指定块
     if highlight_block_ids and render_blocks:
         visualizer.render_blocks(
-            blocks=[b for b in blocks if b.id in highlight_block_ids],
+            block_definitions=[b for b in block_definitions if b.id in highlight_block_ids],
             highlight_ids=highlight_block_ids,
         )
 

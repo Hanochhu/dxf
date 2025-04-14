@@ -661,8 +661,11 @@ class DXFParser(CADFileParser):
 
     def parse_file(
         self, file_path: str
-    ) -> Tuple[List[Entity], List[Block], Dict[str, Any]]:
-        """解析DXF文件"""
+    ) -> Tuple[List[Entity], List[Block], List[BlockReference], Dict[str, Any]]:
+        """
+        解析DXF文件，严格区分块定义（block_definitions）和块引用（block_references）
+        返回: (entities, block_definitions, block_references, 其它信息)
+        """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -674,14 +677,14 @@ class DXFParser(CADFileParser):
             entities = self._parse_entities()
 
             # 解析所有块定义
-            blocks = self._parse_blocks()
+            block_definitions = self._parse_block_definitions()
 
-            # 构建 block_lookup
-            block_lookup = {block.name: block for block in blocks}
+            # 构建 block_definition_lookup
+            block_definition_lookup = {block.name: block for block in block_definitions}
             # 解析所有块引用
-            block_instances = self._parse_block_instances(block_lookup)
+            block_references = self._parse_block_references(block_definition_lookup)
 
-            return entities, block_instances, {"blocks_dict": self.backend.blocks_dict}
+            return entities, block_definitions, block_references, {"blocks_dict": self.backend.blocks_dict}
 
         except Exception as e:
             raise DXFParseError(f"Error parsing DXF file: {e}")
@@ -699,9 +702,9 @@ class DXFParser(CADFileParser):
 
         return entities
 
-    def _parse_blocks(self) -> List[Block]:
-        """解析所有块定义"""
-        blocks = []
+    def _parse_block_definitions(self) -> List[Block]:
+        """解析所有块定义（block definitions）"""
+        block_definitions = []
 
         blocks_dict = self.backend.get_blocks()
 
@@ -719,7 +722,7 @@ class DXFParser(CADFileParser):
                 if entity:
                     entities.append(entity)
 
-            # 创建块
+            # 创建块定义
             if entities:
                 block = Block(
                     id=block_dict.get("handle", self.generate_unique_id("BLOCK_")),
@@ -731,12 +734,12 @@ class DXFParser(CADFileParser):
                 # 检查是否为箭头
                 block.is_arrow = block.check_is_arrow()
 
-                blocks.append(block)
+                block_definitions.append(block)
 
-        return blocks
+        return block_definitions
 
-    def _parse_block_instances(self, block_lookup) -> List[Block]:
-        """解析所有块引用（INSERT实体）"""
+    def _parse_block_references(self, block_definition_lookup) -> List[BlockReference]:
+        """解析所有块引用（block references，INSERT实体）"""
         block_references = []
 
         inserts = self.backend.get_block_inserts()
@@ -781,22 +784,22 @@ class DXFParser(CADFileParser):
                     )
                     attributes.append(attribute)
 
-            # 创建块引用（直接返回BlockReference，不再包装为Block）
+            # 创建块引用（BlockReference）
             block_ref = BlockReference(
                 id=insert.get("handle", self.generate_unique_id("INSERT_")),
                 name=block_name,
                 position=Point.from_tuple(insert.get("position", (0, 0, 0))),
                 rotation=insert.get("rotation", 0),
                 scale=insert.get("scale", (1, 1, 1)),
-                block=block_lookup[block_name] if block_name in block_lookup else None,
+                block=block_definition_lookup[block_name] if block_name in block_definition_lookup else None,
                 attributes=attributes,
             )
 
             block_references.append(block_ref)
-        # 输出所有block_reference的关键信息，便于调试
-        print("[块引用检查] _parse_block_instances 返回的block_references信息：")
-        for i, ref in enumerate(block_references):
-            print(f"  BlockReference{i+1}: id={getattr(ref, 'id', None)}, name={getattr(ref, 'name', None)}, type={type(ref)}, position={getattr(ref, 'position', None)}, rotation={getattr(ref, 'rotation', None)}, scale={getattr(ref, 'scale', None)}")
+        # # 输出所有block_reference的关键信息，便于调试
+        # print("[块引用检查] _parse_block_references 返回的block_references信息：")
+        # for i, ref in enumerate(block_references):
+        #     print(f"  BlockReference{i+1}: id={getattr(ref, 'id', None)}, name={getattr(ref, 'name', None)}, type={type(ref)}, position={getattr(ref, 'position', None)}, rotation={getattr(ref, 'rotation', None)}, scale={getattr(ref, 'scale', None)}")
         return block_references
 
     def _create_entity_from_dict(self, entity_dict: Dict, block_lookup=None) -> Optional[Entity]:

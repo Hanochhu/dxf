@@ -69,7 +69,8 @@ class CADAnalysisSystem:
             parser = self.parser_registry.get_parser(file_path)
 
             # 解析文件
-            self.entities, self.blocks, self.additional_info = parser.parse_file(
+            # parse_file 返回四元组: (entities, block_definitions, block_references, additional_info)
+            self.entities, self.block_definitions, self.block_references, self.additional_info = parser.parse_file(
                 file_path
             )
 
@@ -80,11 +81,11 @@ class CADAnalysisSystem:
 
             # 查找块之间的连接
             self.connections = self.connection_analyzer.find_connections(
-                self.blocks, lines
+                self.block_definitions, lines
             )
 
             # 构建图
-            self.cad_graph.build_from_blocks_connections(self.blocks, self.connections)
+            self.cad_graph.build_from_blocks_connections(self.block_definitions, self.connections)
 
             # 更新当前文件路径
             self.current_file = file_path
@@ -139,14 +140,15 @@ class CADAnalysisSystem:
             parser = self.parser_registry.get_parser(template_file)
 
             # 解析模板文件
-            _, blocks, _ = parser.parse_file(template_file)
+            # parse_file 返回四元组: (entities, block_definitions, block_references, additional_info)
+            _, block_definitions, _, _ = parser.parse_file(template_file)
 
-            if not blocks:
+            if not block_definitions:
                 print("模板文件中没有找到块")
                 return False
 
             # 使用第一个块作为模板
-            self.block_identifier.add_block_template(name, blocks[0])
+            self.block_identifier.add_block_template(name, block_definitions[0])
             return True
 
         except Exception as e:

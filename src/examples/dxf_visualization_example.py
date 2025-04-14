@@ -55,14 +55,14 @@ def main():
         parser.debug = True
 
     try:
-        # parse_file 返回一个包含三个元素的元组: (entities, blocks, additional_info)
+        # parse_file 返回一个包含四个元素的元组: (entities, block_definitions, block_references, additional_info)
         parse_result = parser.parse_file(args.dxf_file)
 
-        # 正确提取实体和块
-        if isinstance(parse_result, tuple) and len(parse_result) >= 2:
-            entities, blocks, additional_info = parse_result
+        # 正确提取实体、块定义和块引用
+        if isinstance(parse_result, tuple) and len(parse_result) >= 4:
+            entities, block_definitions, block_references, additional_info = parse_result
             if args.debug:
-                print(f"解析完成: 找到 {len(entities)} 个实体和 {len(blocks)} 个块")
+                print(f"解析完成: 找到 {len(entities)} 个实体、{len(block_definitions)} 个块定义、{len(block_references)} 个块引用")
         else:
             # 兼容旧版本或其他返回类型
             if isinstance(parse_result, dict):

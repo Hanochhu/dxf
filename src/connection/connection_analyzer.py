@@ -78,6 +78,14 @@ class ConnectionAnalyzer:
             List[Connection]: 连接列表
         """
         connections = []
+
+        # 过滤掉名称为"AA2"的BlockReference（无论是ref.name还是ref.block.name）
+        filtered_blockreferences = [
+            ref
+            for ref in blockreferences
+            if getattr(ref, "name", None) != "AA2"
+            and getattr(getattr(ref, "block", None), "name", None) != "AA2"
+        ]
         connection_id = 0
 
         # 首先查找直接连接（线段与BlockReference边界框接触）
@@ -85,8 +93,10 @@ class ConnectionAnalyzer:
             touched_refs = []
             if not line.bounding_box:
                 continue
-            for ref in blockreferences:
-                if ref.bounding_box and ref.bounding_box.overlaps(line.bounding_box, tolerance=self.block_connection_tolerance):
+            for ref in filtered_blockreferences:
+                if ref.bounding_box and ref.bounding_box.overlaps(
+                    line.bounding_box, tolerance=self.block_connection_tolerance
+                ):
                     touched_refs.append(ref)
             # 两两组合建立连接
             if len(touched_refs) >= 2:
@@ -100,15 +110,50 @@ class ConnectionAnalyzer:
                                 target_ref=touched_refs[j],
                                 path_segments=[line],
                                 has_explicit_direction=False,
-                                connection_type="direct"
+                                connection_type="direct",
                             )
                         )
 
         # 查找间接连接（有间隙的线段）
         indirect_connections = self._find_indirect_connections(
-            blockreferences, lines, connections
+            filtered_blockreferences, lines, connections
         )
         connections.extend(indirect_connections)
+
+        # 统计所有已被用作连接的线段id
+        used_line_ids = set()
+        for conn in connections:
+            for seg in conn.path_segments:
+                used_line_ids.add(seg.id)
+
+        # 找出未被用作连接的线段（即只与AA2重叠或完全未重叠的线段）
+        unconnected_lines = [line for line in lines if line.id not in used_line_ids]
+
+        # 构造虚拟BlockReference用于未连接线段
+        from src.core.data_structures import BlockReference, Point
+
+        unconnected_ref = BlockReference(
+            id="unconnected",
+            name="unconnected",
+            position=Point(0, 0, 0),
+            rotation=0.0,
+            scale=(1.0, 1.0, 1.0),
+            block=None,
+            attributes=[],
+        )
+        # 对于这些线段，生成特殊类型的 Connection，source_ref/target_ref 为 unconnected_ref
+        for line in unconnected_lines:
+            connection_id += 1
+            connections.append(
+                Connection(
+                    id=f"conn_{connection_id}",
+                    source_ref=unconnected_ref,
+                    target_ref=unconnected_ref,
+                    path_segments=[line],
+                    has_explicit_direction=False,
+                    connection_type="unconnected",
+                )
+            )
 
         # 根据箭头块确定连接方向
         self._determine_connection_directions(connections, blockreferences)
@@ -156,7 +201,10 @@ class ConnectionAnalyzer:
         return None
 
     def _find_existing_connection(
-        self, connections: List[Connection], source: "BlockReference", target: "BlockReference"
+        self,
+        connections: List[Connection],
+        source: "BlockReference",
+        target: "BlockReference",
     ) -> Optional[Connection]:
         """
         查找源BlockReference和目标BlockReference之间的已有连接
@@ -230,8 +278,12 @@ class ConnectionAnalyzer:
                             furthest_pair = (start, end)
 
                 # 检查这些端点是否连接到BlockReference
-                source_ref = self._find_connected_block(furthest_pair[0], blockreferences)
-                target_ref = self._find_connected_block(furthest_pair[1], blockreferences)
+                source_ref = self._find_connected_block(
+                    furthest_pair[0], blockreferences
+                )
+                target_ref = self._find_connected_block(
+                    furthest_pair[1], blockreferences
+                )
 
                 if source_ref and target_ref and source_ref.id != target_ref.id:
                     connection_id += 1
@@ -252,7 +304,7 @@ class ConnectionAnalyzer:
         self, lines: List[LineEntity]
     ) -> List[List[LineEntity]]:
         """
-        将看起来对齐或有小间隙连接的线段分组
+        将所有端点重合（带容差）的线段聚为一组
 
         Args:
             lines: 线段列表
@@ -263,22 +315,45 @@ class ConnectionAnalyzer:
         if not lines:
             return []
 
-        # 创建潜在连接的线段图
-        segment_graph = nx.Graph()
+        # 容差
+        tolerance = (
+            self.block_connection_tolerance
+            if hasattr(self, "block_connection_tolerance")
+            else 2.0
+        )
 
-        for i, line1 in enumerate(lines):
-            segment_graph.add_node(i, line=line1)
+        # 构建端点到线段的映射
+        point_to_lines = {}
+        for idx, line in enumerate(lines):
+            for pt in [line.start_point, line.end_point]:
+                key = (
+                    round(pt.x / tolerance),
+                    round(pt.y / tolerance),
+                    round(pt.z / tolerance),
+                )
+                point_to_lines.setdefault(key, set()).add(idx)
 
-            for j, line2 in enumerate(lines):
-                if i != j:
-                    # 检查line2是否可能与line1连接
-                    if self._are_segments_connected(line1, line2):
-                        segment_graph.add_edge(i, j)
+        # 构建连通分量（只要有端点重合就连通）
+        import networkx as nx
 
-        # 查找连通分量（连接线段组）
+        G = nx.Graph()
+        for idx in range(len(lines)):
+            G.add_node(idx)
+        for idx, line in enumerate(lines):
+            for pt in [line.start_point, line.end_point]:
+                key = (
+                    round(pt.x / tolerance),
+                    round(pt.y / tolerance),
+                    round(pt.z / tolerance),
+                )
+                for other_idx in point_to_lines[key]:
+                    if other_idx != idx:
+                        G.add_edge(idx, other_idx)
+
+        # 查找连通分量
         groups = []
-        for component in nx.connected_components(segment_graph):
-            group = [segment_graph.nodes[i]["line"] for i in component]
+        for component in nx.connected_components(G):
+            group = [lines[i] for i in component]
             groups.append(group)
 
         return groups
@@ -648,7 +723,8 @@ class ConnectionAnalyzer:
         lines: List["LineEntity"],
         bbox_tolerance: float = 0.01,
     ) -> List["Connection"]:
-        """基于BlockReference和LineEntity的边界框接触，分析BlockReference之间的连接关系。只要两端BlockReference的边界框分别与同一LineEntity的边界框有重叠，即认为它们连接。方向信息保留但不赋值（has_explicit_direction=False）。
+        """
+        基于BlockReference和LineEntity的边界框接触，分析BlockReference之间的连接关系。只要两端BlockReference的边界框分别与同一LineEntity的边界框有重叠，即认为它们连接。方向信息保留但不赋值（has_explicit_direction=False）。
         Args:
             blockreferences: BlockReference列表
             lines: LineEntity列表
@@ -659,12 +735,20 @@ class ConnectionAnalyzer:
         from src.core.data_structures import Connection
 
         connections = []
+
+        # 过滤掉名称为"AA2"的BlockReference（无论是ref.name还是ref.block.name）
+        filtered_blockreferences = [
+            ref
+            for ref in blockreferences
+            if getattr(ref, "name", None) != "AA2"
+            and getattr(getattr(ref, "block", None), "name", None) != "AA2"
+        ]
         conn_id = 0
         for line in lines:
             touched_refs = []
             if not line.bounding_box:
                 continue
-            for ref in blockreferences:
+            for ref in filtered_blockreferences:
                 if ref.bounding_box and ref.bounding_box.overlaps(
                     line.bounding_box, tolerance=bbox_tolerance
                 ):
@@ -685,7 +769,30 @@ class ConnectionAnalyzer:
                         )
         return connections
 
-        return self.cad_graph.analyze_graph()
+    def get_connected_blockreferences(
+        self, connections: List[Connection]
+    ) -> List["BlockReference"]:
+        """
+        获取所有参与实际连接（非unconnected）的BlockReference
+        Args:
+            connections: 连接关系列表
+        Returns:
+            List[BlockReference]: 参与连接的BlockReference（去重）
+        """
+        id2ref = {}
+        for conn in connections:
+            if getattr(conn, "connection_type", None) != "unconnected":
+                if (
+                    conn.source_ref is not None
+                    and getattr(conn.source_ref, "id", None) != "unconnected"
+                ):
+                    id2ref[conn.source_ref.id] = conn.source_ref
+                if (
+                    conn.target_ref is not None
+                    and getattr(conn.target_ref, "id", None) != "unconnected"
+                ):
+                    id2ref[conn.target_ref.id] = conn.target_ref
+        return list(id2ref.values())
 
 
 class ConnectionClassifier:

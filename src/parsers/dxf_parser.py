@@ -676,8 +676,10 @@ class DXFParser(CADFileParser):
             # 解析所有块定义
             blocks = self._parse_blocks()
 
+            # 构建 block_lookup
+            block_lookup = {block.name: block for block in blocks}
             # 解析所有块引用
-            block_instances = self._parse_block_instances()
+            block_instances = self._parse_block_instances(block_lookup)
 
             return entities, block_instances, {"blocks_dict": self.backend.blocks_dict}
 
@@ -733,7 +735,7 @@ class DXFParser(CADFileParser):
 
         return blocks
 
-    def _parse_block_instances(self) -> List[Block]:
+    def _parse_block_instances(self, block_lookup) -> List[Block]:
         """解析所有块引用（INSERT实体）"""
         block_instances = []
 
@@ -786,6 +788,7 @@ class DXFParser(CADFileParser):
                 position=Point.from_tuple(insert.get("position", (0, 0, 0))),
                 rotation=insert.get("rotation", 0),
                 scale=insert.get("scale", (1, 1, 1)),
+                block=block_lookup[block_name] if block_name in block_lookup else None,
                 attributes=attributes,
             )
 
@@ -805,7 +808,7 @@ class DXFParser(CADFileParser):
 
         return block_instances
 
-    def _create_entity_from_dict(self, entity_dict: Dict) -> Optional[Entity]:
+    def _create_entity_from_dict(self, entity_dict: Dict, block_lookup=None) -> Optional[Entity]:
         """从字典创建实体"""
         entity_type = entity_dict.get("type", "")
 
@@ -849,9 +852,7 @@ class DXFParser(CADFileParser):
                     rotation=entity_dict.get("rotation", 0.0),
                 )
             elif entity_type in ("LWPOLYLINE", "POLYLINE"):
-                # 正确处理多段线，创建 PolylineEntity/LwPolylineEntity 并传递顶点
                 points = entity_dict.get("points", [])
-                # 调试：打印 points 内容
                 vertices = []
                 for pt in points:
                     try:
@@ -880,13 +881,14 @@ class DXFParser(CADFileParser):
                         is_closed=is_closed,
                     )
             elif entity_type == "INSERT":
-                # 正确处理块插入实体
+                block_name = entity_dict.get("block_name", "")
                 return BlockReference(
                     id=entity_dict.get("handle", ""),
-                    name=entity_dict.get("block_name", ""),
+                    name=block_name,
                     position=Point.from_tuple(entity_dict.get("position", (0, 0, 0))),
                     rotation=entity_dict.get("rotation", 0.0),
                     scale=entity_dict.get("scale", (1.0, 1.0, 1.0)),
+                    block=block_lookup[block_name] if block_lookup and block_name in block_lookup else None,
                     attributes=[
                         AttributeInfo.from_dict(attr)
                         for attr in entity_dict.get("attributes", [])

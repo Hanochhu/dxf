@@ -721,13 +721,14 @@ class TextEntity(Entity):
 
 @dataclass
 class BlockReference:
-    """块引用信息"""
+    """块引用信息（实例化的块，持有对Block的引用）"""
 
     id: str
     name: str
     position: Point
     rotation: float
     scale: Tuple[float, float, float]
+    block: "Block"  # 直接持有Block对象引用
     attributes: List[AttributeInfo] = field(default_factory=list)
     entity_type: EntityType = EntityType.INSERT  # BlockReference对应INSERT类型实体
 
@@ -739,23 +740,51 @@ class BlockReference:
             "position": self.position.to_tuple(),
             "rotation": self.rotation,
             "scale": self.scale,
+            "block_id": self.block.id if self.block else None,
             "attributes": [attr.to_dict() for attr in self.attributes],
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "BlockReference":
-        """从字典创建块引用"""
+    def from_dict(cls, data: Dict, block_lookup: Dict[str, "Block"] = None) -> "BlockReference":
+        """从字典创建块引用，需要传入block查找表"""
+        block_obj = None
+        if block_lookup and "block_id" in data:
+            block_obj = block_lookup.get(data["block_id"])
         return cls(
             id=data["id"],
             name=data["name"],
             position=Point.from_tuple(data["position"]),
             rotation=data["rotation"],
             scale=data["scale"],
+            block=block_obj,
             attributes=[
                 AttributeInfo.from_dict(attr) for attr in data.get("attributes", [])
             ],
             entity_type=EntityType.INSERT if "EntityType" in globals() else None,
         )
+
+    def get_transformed_bounding_box(self) -> Optional[BoundingBox]:
+        """
+        获取经过平移、缩放、旋转后的块边界框（实例空间）
+        仅支持平移和缩放，旋转如有需要可补充
+        :return: 变换后的bounding_box
+        """
+        block_bbox = self.block.bounding_box if self.block else None
+        if block_bbox is None:
+            return None
+        # 取原始块的min/max点
+        min_pt = block_bbox.min_point
+        max_pt = block_bbox.max_point
+        # 缩放
+        sx, sy, sz = self.scale if hasattr(self, "scale") else (1.0, 1.0, 1.0)
+        min_pt = Point(min_pt.x * sx, min_pt.y * sy, min_pt.z * sz)
+        max_pt = Point(max_pt.x * sx, max_pt.y * sy, max_pt.z * sz)
+        # 平移
+        dx, dy, dz = self.position.x, self.position.y, self.position.z
+        min_pt = Point(min_pt.x + dx, min_pt.y + dy, min_pt.z + dz)
+        max_pt = Point(max_pt.x + dx, max_pt.y + dy, max_pt.z + dz)
+        # TODO: 如需支持旋转，可在此补充旋转变换
+        return BoundingBox(min_pt, max_pt)
 
 
 @dataclass

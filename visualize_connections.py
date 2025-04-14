@@ -74,12 +74,14 @@ def visualize_connections(dxf_path, output_path="connections.png"):
         seg_count_hist[n] = seg_count_hist.get(n, 0) + 1
     print("连接聚合段数分布：", seg_count_hist)
 
-    fig, ax = plt.subplots(figsize=(16, 12))
+    fig, ax = plt.subplots(figsize=(48, 36))
     ax.set_aspect("equal")
     ax.set_title("CAD 块连接可视化", fontsize=16)
 
     # 渲染所有块引用
     for ref in getattr(system, "block_references", []):
+        # 在BlockReference位置标注其id
+        ax.text(ref.position.x, ref.position.y + 2, str(ref.id), fontsize=6, color='blue', ha='center', va='bottom', zorder=20)
         renderer.render_insert(ref, ax, color="#00ff00", linewidth=1.0, alpha=0.7, zorder=10)
 
     # 渲染所有连接（聚合折线高亮）
@@ -102,7 +104,7 @@ def visualize_connections(dxf_path, output_path="connections.png"):
 
 if __name__ == "__main__":
     # 修改为你的 dxf 文件路径
-    dxf_path = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
+    dxf_path = "图例和流程图_仪表管件设备均为模块/2308PM-05-T3-2518.dxf"
     visualize_connections(dxf_path)
     # 统计连接数量
     system = CADAnalysisSystem()

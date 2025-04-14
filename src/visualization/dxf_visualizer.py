@@ -182,11 +182,11 @@ class DXFVisualizer:
             blocks: 块列表
             highlight_ids: 高亮块ID列表
         """
-        # 输出传入的块引用信息，便于检查
-        print("[块引用检查] 传入blocks参数类型: ", type(blocks))
-        if blocks:
-            for i, block in enumerate(blocks):
-                print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'bounding_box') and block.bounding_box else '无'}")
+        # # 输出传入的块引用信息，便于检查
+        # print("[块引用检查] 传入blocks参数类型: ", type(blocks))
+        # if blocks:
+        #     for i, block in enumerate(blocks):
+        #         print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'bounding_box') and block.bounding_box else '无'}")
         if self.fig is None or self.ax is None:
             self.create_figure()
 
@@ -236,10 +236,10 @@ class DXFVisualizer:
                 block_color = block_colors.get(block.id, self.colors["block"])
 
             # 边界模式: 只渲染边界框
-                if block.bounding_box:
-                    print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y})-({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})")
-                else:
-                    print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=无")
+                # if block.bounding_box:
+                #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y})-({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})")
+                # else:
+                #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=无")
             if self.block_display_mode == "boundary" and block.bounding_box:
                 width = block.bounding_box.width
                 height = block.bounding_box.height
@@ -438,8 +438,8 @@ class DXFVisualizer:
         # 设置视图区域
         self._set_view_bounds(entities, blocks, focus_area)
 
-        # 添加图例
-        self._add_legend()
+        # # 不再添加图例
+        # self._add_legend()
 
     def _set_view_bounds(
         self,

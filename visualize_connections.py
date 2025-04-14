@@ -104,7 +104,7 @@ def visualize_connections(dxf_path, output_path="connections.png"):
 
 if __name__ == "__main__":
     # 修改为你的 dxf 文件路径
-    dxf_path = "图例和流程图_仪表管件设备均为模块/2308PM-05-T3-2518.dxf"
+    dxf_path = "图例和流程图_仪表管件设备均为模块/2308PM-09-T3-2900.dxf"
     visualize_connections(dxf_path)
     # 统计连接数量
     system = CADAnalysisSystem()

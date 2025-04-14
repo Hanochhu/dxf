@@ -22,6 +22,7 @@ from src.core.data_structures import (
     TextEntity,
     Block,
     EntityType,
+    BlockReference,
 )
 from src.visualization.entity_renderer import EntityRenderer
 
@@ -174,7 +175,12 @@ class DXFVisualizer:
                 alpha=1.0,
             )
 
-    def render_blocks(self, blocks: List[Block], highlight_ids: List[str] = None):
+    def render_blocks(
+        self,
+        blocks: List[BlockReference],
+        highlight_ids: List[str] = None,
+        block_definitions: List[Block] = None,
+    ):
         """
         渲染块列表
 
@@ -182,11 +188,11 @@ class DXFVisualizer:
             blocks: 块列表
             highlight_ids: 高亮块ID列表
         """
-        # # 输出传入的块引用信息，便于检查
-        # print("[块引用检查] 传入blocks参数类型: ", type(blocks))
-        # if blocks:
-        #     for i, block in enumerate(blocks):
-        #         print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'bounding_box') and block.bounding_box else '无'}")
+        # 输出传入的块引用信息，便于检查
+        print("[块引用检查] 传入blocks参数类型: ", type(blocks))
+        if blocks:
+            for i, block in enumerate(blocks):
+                print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'bounding_box') and block.bounding_box else '无'}")
         if self.fig is None or self.ax is None:
             self.create_figure()
 
@@ -236,10 +242,10 @@ class DXFVisualizer:
                 block_color = block_colors.get(block.id, self.colors["block"])
 
             # 边界模式: 只渲染边界框
-                # if block.bounding_box:
-                #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y})-({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})")
-                # else:
-                #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=无")
+            # if block.bounding_box:
+            #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y})-({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})")
+            # else:
+            #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=无")
             if self.block_display_mode == "boundary" and block.bounding_box:
                 width = block.bounding_box.width
                 height = block.bounding_box.height
@@ -259,20 +265,111 @@ class DXFVisualizer:
                 self.ax.add_patch(rect)
 
             # 结构模式: 渲染块内部实体
-            elif self.block_display_mode == "structure" and hasattr(block, "entities"):
-                # 渲染块内部所有实体
-                for entity in block.entities:
-                    # 跳过没有边界框的实体
-                    if not hasattr(entity, "bounding_box") or not entity.bounding_box:
-                        if self.debug_mode:
-                            print(
-                                f"跳过无边界框的实体: {entity.id} (类型: {getattr(entity, 'entity_type', 'UNKNOWN')})"
-                            )
+            elif self.block_display_mode == "structure":
+                # 结构模式：遍历块引用（BlockReference），查找块定义，做仿射变换后渲染
+                from copy import deepcopy
+                block_ref = block  # blocks 实际为 BlockReference
+                if not hasattr(block_ref, "block") or block_ref.block is None:
+                    continue
+                block_def = block_ref.block
+                sx, sy, sz = block_ref.scale if hasattr(block_ref, "scale") else (1.0, 1.0, 1.0)
+                angle_rad = math.radians(getattr(block_ref, "rotation", 0.0))
+                dx, dy, dz = block_ref.position.x, block_ref.position.y, block_ref.position.z
+                for entity in block_def.entities:
+                    ent = deepcopy(entity)
+                    etype = getattr(ent, "entity_type", None)
+                    # 线段
+                    if hasattr(ent, "start_point") and hasattr(ent, "end_point"):
+                        # 缩放
+                        ent.start_point.x *= sx
+                        ent.start_point.y *= sy
+                        ent.end_point.x *= sx
+                        ent.end_point.y *= sy
+                        # 旋转
+                        x0, y0 = ent.start_point.x, ent.start_point.y
+                        x1, y1 = ent.end_point.x, ent.end_point.y
+                        ent.start_point.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        ent.start_point.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        ent.end_point.x = x1 * math.cos(angle_rad) - y1 * math.sin(angle_rad)
+                        ent.end_point.y = x1 * math.sin(angle_rad) + y1 * math.cos(angle_rad)
+                        # 平移
+                        ent.start_point.x += dx
+                        ent.start_point.y += dy
+                        ent.end_point.x += dx
+                        ent.end_point.y += dy
+                    # 圆
+                    elif hasattr(ent, "center") and hasattr(ent, "radius"):
+                        ent.center.x *= sx
+                        ent.center.y *= sy
+                        x0, y0 = ent.center.x, ent.center.y
+                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        ent.center.x += dx
+                        ent.center.y += dy
+                        ent.radius *= (sx + sy) / 2.0
+                    # 圆弧
+                    elif etype == EntityType.ARC and hasattr(ent, "center") and hasattr(ent, "radius"):
+                        ent.center.x *= sx
+                        ent.center.y *= sy
+                        x0, y0 = ent.center.x, ent.center.y
+                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        ent.center.x += dx
+                        ent.center.y += dy
+                        ent.radius *= (sx + sy) / 2.0
+                        ent.start_angle = getattr(ent, "start_angle", 0.0) + getattr(block_ref, "rotation", 0.0)
+                        ent.end_angle = getattr(ent, "end_angle", 0.0) + getattr(block_ref, "rotation", 0.0)
+                    # 多段线
+                    elif etype in [EntityType.LWPOLYLINE, EntityType.POLYLINE] and hasattr(ent, "vertices"):
+                        for v in ent.vertices:
+                            v.x *= sx
+                            v.y *= sy
+                            x0, y0 = v.x, v.y
+                            v.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                            v.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                            v.x += dx
+                            v.y += dy
+                    # 椭圆
+                    elif etype == EntityType.ELLIPSE and hasattr(ent, "center"):
+                        ent.center.x *= sx
+                        ent.center.y *= sy
+                        x0, y0 = ent.center.x, ent.center.y
+                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        ent.center.x += dx
+                        ent.center.y += dy
+                        # 主轴方向等可扩展
+                    # 文本
+                    elif etype in [EntityType.TEXT, EntityType.MTEXT] and hasattr(ent, "position"):
+                        ent.position.x *= sx
+                        ent.position.y *= sy
+                        x0, y0 = ent.position.x, ent.position.y
+                        ent.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        ent.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        ent.position.x += dx
+                        ent.position.y += dy
+                        ent.rotation = getattr(ent, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
+                    # 嵌套块引用递归
+                    elif etype == EntityType.INSERT and hasattr(ent, "block") and ent.block is not None:
+                        # 递归渲染嵌套块引用
+                        nested_ref = deepcopy(ent)
+                        nested_ref.position.x *= sx
+                        nested_ref.position.y *= sy
+                        x0, y0 = nested_ref.position.x, nested_ref.position.y
+                        nested_ref.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        nested_ref.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        nested_ref.position.x += dx
+                        nested_ref.position.y += dy
+                        nested_ref.rotation = getattr(nested_ref, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
+                        # 递归调用
+                        self.render_blocks([nested_ref], highlight_ids, block_definitions)
                         continue
-
+                    else:
+                        if self.debug_mode:
+                            print(f"[结构模式] 未处理类型: {etype}, id: {getattr(ent, 'id', None)}")
                     try:
                         self.entity_renderer.render_entity(
-                            entity=entity,
+                            entity=ent,
                             ax=self.ax,
                             color=block_color,
                             linewidth=1.5 if is_highlighted else 1.0,
@@ -282,7 +379,7 @@ class DXFVisualizer:
                         )
                     except Exception as e:
                         if self.debug_mode:
-                            print(f"渲染实体 {entity.id} 时出错: {str(e)}")
+                            print(f"渲染实体 {getattr(ent, 'id', None)} 时出错: {str(e)}")
 
                 # 仍然显示边界框，但用虚线表示
                 # if block.bounding_box:
@@ -382,6 +479,7 @@ class DXFVisualizer:
         blocks: List[Block] = None,
         connections: List[Any] = None,
         focus_area: Tuple[float, float, float, float] = None,
+        block_definitions: List[Block] = None,
     ):
         """
         渲染完整DXF内容
@@ -428,7 +526,7 @@ class DXFVisualizer:
         # 渲染块
         if blocks:
             print(f"正在渲染 {len(blocks)} 个块...")
-            self.render_blocks(blocks)
+            self.render_blocks(blocks, block_definitions=block_definitions)
 
         # 渲染连接
         if connections:

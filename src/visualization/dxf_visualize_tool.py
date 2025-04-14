@@ -99,7 +99,7 @@ def parse_args():
     parser.add_argument(
         "--highlight-color", type=str, help="高亮颜色", default="#d62728"
     )
-    parser.add_argument('--no-blocks', action='store_true', help='不渲染块定义')
+    parser.add_argument("--no-blocks", action="store_true", help="不渲染块定义")
     return parser.parse_args()
 
 
@@ -131,12 +131,16 @@ def main():
 
         # 正确提取实体、块定义和块引用
         if isinstance(parse_result, tuple) and len(parse_result) >= 4:
-            entities, block_definitions, block_references, additional_info = parse_result
+            entities, block_definitions, block_references, additional_info = (
+                parse_result
+            )
         else:
             # 兼容旧版本或其他返回类型
             if isinstance(parse_result, dict):
                 entities = parse_result.get("entities", [])
-                block_definitions = parse_result.get("block_definitions", parse_result.get("blocks", []))
+                block_definitions = parse_result.get(
+                    "block_definitions", parse_result.get("blocks", [])
+                )
             else:
                 entities = getattr(parse_result, "entities", [])
                 block_definitions = getattr(parse_result, "block_definitions", [])
@@ -144,7 +148,9 @@ def main():
         # 调试信息: 显示解析结果
         if args.debug:
             print(f"\n=== DXF解析结果摘要 ===")
-            print(f"解析完成: 找到 {len(entities)} 个实体和 {len(block_definitions)} 个块")
+            print(
+                f"解析完成: 找到 {len(entities)} 个实体和 {len(block_definitions)} 个块"
+            )
 
             # 实体类型统计
             entity_types = {}
@@ -325,7 +331,15 @@ def main():
                 print(f"将高亮显示块: {block.name}")
 
     # 确定是否显示块，默认显示，除非明确禁用
-    render_blocks = None if args.no_blocks else block_references
+    if args.no_blocks:
+        render_blocks = None
+        render_block_definitions = None
+    elif args.block_mode == "structure":
+        render_blocks = block_references
+        render_block_definitions = block_definitions
+    else:
+        render_blocks = block_references
+        render_block_definitions = None
 
     # 渲染DXF内容
     print("正在渲染DXF内容...")
@@ -347,6 +361,13 @@ def main():
                 print(f"使用自定义视图范围: {focus_area}")
         except:
             print("警告: 无法解析视图范围，使用自动范围")
+    visualizer.render_dxf(
+        entities=entities,
+        blocks=render_blocks,
+        connections=render_connections,
+        focus_area=focus_area,
+        block_definitions=render_block_definitions,
+    )
 
     # 渲染
     visualizer.render_dxf(
@@ -359,7 +380,9 @@ def main():
     # 高亮指定块
     if highlight_block_ids and render_blocks:
         visualizer.render_blocks(
-            block_definitions=[b for b in block_definitions if b.id in highlight_block_ids],
+            block_definitions=[
+                b for b in block_definitions if b.id in highlight_block_ids
+            ],
             highlight_ids=highlight_block_ids,
         )
 

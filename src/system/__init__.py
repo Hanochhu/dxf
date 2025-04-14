@@ -1,1 +1,1 @@
-from system.cad_analysis_system import CADAnalysisSystem, CADAnalysisConfig
+from .cad_analysis_system import CADAnalysisSystem, CADAnalysisConfig

@@ -65,13 +65,13 @@ class ConnectionAnalyzer:
             self.block_connection_tolerance = block_connection_tolerance
 
     def find_connections(
-        self, blocks: List[Block], lines: List[LineEntity]
+        self, blockreferences: List["BlockReference"], lines: List[LineEntity]
     ) -> List[Connection]:
         """
-        查找块之间的连接
+        查找BlockReference之间的连接
 
         Args:
-            blocks: 块列表
+            blockreferences: BlockReference列表
             lines: 线段列表
 
         Returns:
@@ -80,104 +80,101 @@ class ConnectionAnalyzer:
         connections = []
         connection_id = 0
 
-        # 首先查找直接连接
+        # 首先查找直接连接（线段与BlockReference边界框接触）
         for line in lines:
-            source_block = self._find_connected_block(line.start_point, blocks)
-            target_block = self._find_connected_block(line.end_point, blocks)
-
-            if source_block and target_block and source_block.id != target_block.id:
-                # 检查是否为已有连接的一部分
-                existing_conn = self._find_existing_connection(
-                    connections, source_block, target_block
-                )
-
-                if existing_conn:
-                    # 添加到现有连接
-                    existing_conn.path_segments.append(line)
-                else:
-                    # 创建新连接
-                    connection_id += 1
-                    connections.append(
-                        Connection(
-                            id=f"conn_{connection_id}",
-                            source_block=source_block,
-                            target_block=target_block,
-                            path_segments=[line],
-                            has_explicit_direction=False,  # 后续确定
+            touched_refs = []
+            if not line.bounding_box:
+                continue
+            for ref in blockreferences:
+                if ref.bounding_box and ref.bounding_box.overlaps(line.bounding_box, tolerance=self.block_connection_tolerance):
+                    touched_refs.append(ref)
+            # 两两组合建立连接
+            if len(touched_refs) >= 2:
+                for i in range(len(touched_refs)):
+                    for j in range(i + 1, len(touched_refs)):
+                        connection_id += 1
+                        connections.append(
+                            Connection(
+                                id=f"conn_{connection_id}",
+                                source_ref=touched_refs[i],
+                                target_ref=touched_refs[j],
+                                path_segments=[line],
+                                has_explicit_direction=False,
+                                connection_type="direct"
+                            )
                         )
-                    )
 
         # 查找间接连接（有间隙的线段）
         indirect_connections = self._find_indirect_connections(
-            blocks, lines, connections
+            blockreferences, lines, connections
         )
         connections.extend(indirect_connections)
 
         # 根据箭头块确定连接方向
-        self._determine_connection_directions(connections, blocks)
+        self._determine_connection_directions(connections, blockreferences)
 
         return connections
 
     def _find_connected_block(
-        self, point: Point, blocks: List[Block]
-    ) -> Optional[Block]:
+        self, point: Point, blockreferences: List["BlockReference"]
+    ) -> Optional["BlockReference"]:
         """
-        查找包含或非常接近点的块
+        查找包含或非常接近点的BlockReference
 
         Args:
             point: 点
-            blocks: 块列表
+            blockreferences: BlockReference列表
 
         Returns:
-            Optional[Block]: 连接的块，如果没有找到则返回None
+            Optional[BlockReference]: 连接的BlockReference，如果没有找到则返回None
         """
-        for block in blocks:
-            if not block.bounding_box:
+        for ref in blockreferences:
+            if not ref.bounding_box:
                 continue
 
-            # 检查点是否在块的边界框内
-            if block.bounding_box.contains_point(point):
-                return block
+            # 检查点是否在BlockReference的边界框内
+            if ref.bounding_box.contains_point(point):
+                return ref
 
-            # 检查点是否非常接近块的边界框
+            # 检查点是否非常接近BlockReference的边界框
             extended_bbox = BoundingBox(
                 Point(
-                    block.bounding_box.min_point.x - self.block_connection_tolerance,
-                    block.bounding_box.min_point.y - self.block_connection_tolerance,
-                    block.bounding_box.min_point.z - self.block_connection_tolerance,
+                    ref.bounding_box.min_point.x - self.block_connection_tolerance,
+                    ref.bounding_box.min_point.y - self.block_connection_tolerance,
+                    ref.bounding_box.min_point.z - self.block_connection_tolerance,
                 ),
                 Point(
-                    block.bounding_box.max_point.x + self.block_connection_tolerance,
-                    block.bounding_box.max_point.y + self.block_connection_tolerance,
-                    block.bounding_box.max_point.z + self.block_connection_tolerance,
+                    ref.bounding_box.max_point.x + self.block_connection_tolerance,
+                    ref.bounding_box.max_point.y + self.block_connection_tolerance,
+                    ref.bounding_box.max_point.z + self.block_connection_tolerance,
                 ),
             )
 
             if extended_bbox.contains_point(point):
-                return block
+                return ref
 
         return None
 
     def _find_existing_connection(
-        self, connections: List[Connection], source: Block, target: Block
+        self, connections: List[Connection], source: "BlockReference", target: "BlockReference"
     ) -> Optional[Connection]:
         """
-        查找源块和目标块之间的已有连接
+        查找源BlockReference和目标BlockReference之间的已有连接
 
         Args:
             connections: 连接列表
-            source: 源块
-            target: 目标块
+            source: 源BlockReference
+            target: 目标BlockReference
 
         Returns:
             Optional[Connection]: 现有连接，如果没有找到则返回None
         """
         for conn in connections:
             if (
-                conn.source_block.id == source.id and conn.target_block.id == target.id
+                conn.source_ref.id == source.id and conn.target_ref.id == target.id
             ) or (
-                conn.source_block.id == target.id
-                and conn.target_block.id == source.id
+                conn.source_ref.id == target.id
+                and conn.target_ref.id == source.id
                 and not conn.has_explicit_direction
             ):
                 return conn
@@ -185,7 +182,7 @@ class ConnectionAnalyzer:
 
     def _find_indirect_connections(
         self,
-        blocks: List[Block],
+        blockreferences: List["BlockReference"],
         lines: List[LineEntity],
         direct_connections: List[Connection],
     ) -> List[Connection]:
@@ -193,7 +190,7 @@ class ConnectionAnalyzer:
         查找间接连接（带间隙或通过特殊符号）
 
         Args:
-            blocks: 块列表
+            blockreferences: BlockReference列表
             lines: 线段列表
             direct_connections: 直接连接列表
 
@@ -213,7 +210,7 @@ class ConnectionAnalyzer:
         # 尝试将小间隙的线段连接起来
         grouped_segments = self._group_aligned_segments(unconnected_lines)
 
-        # 对于每组，尝试找到端点连接的块
+        # 对于每组，尝试找到端点连接的BlockReference
         connection_id = len(direct_connections)
         for segment_group in grouped_segments:
             if len(segment_group) > 0:
@@ -232,17 +229,17 @@ class ConnectionAnalyzer:
                             max_distance = distance
                             furthest_pair = (start, end)
 
-                # 检查这些端点是否连接到块
-                source_block = self._find_connected_block(furthest_pair[0], blocks)
-                target_block = self._find_connected_block(furthest_pair[1], blocks)
+                # 检查这些端点是否连接到BlockReference
+                source_ref = self._find_connected_block(furthest_pair[0], blockreferences)
+                target_ref = self._find_connected_block(furthest_pair[1], blockreferences)
 
-                if source_block and target_block and source_block.id != target_block.id:
+                if source_ref and target_ref and source_ref.id != target_ref.id:
                     connection_id += 1
                     indirect_connections.append(
                         Connection(
                             id=f"conn_{connection_id}",
-                            source_block=source_block,
-                            target_block=target_block,
+                            source_ref=source_ref,
+                            target_ref=target_ref,
                             path_segments=segment_group,
                             has_explicit_direction=False,
                             connection_type="indirect",
@@ -335,23 +332,25 @@ class ConnectionAnalyzer:
         return abs(abs(dot_product) - 1.0) <= self.connection_angle_tolerance
 
     def _determine_connection_directions(
-        self, connections: List[Connection], blocks: List[Block]
+        self, connections: List[Connection], blockreferences: List["BlockReference"]
     ):
         """
         根据箭头块确定连接方向
 
         Args:
             connections: 连接列表
-            blocks: 块列表
+            blockreferences: BlockReference列表
         """
-        # 识别所有箭头块
+        # 识别所有箭头块（仍然基于Block，需结合BlockReference.block属性）
         arrow_blocks = []
-        for block in blocks:
-            if self.block_identifier:
-                if self.block_identifier.is_arrow_block(block):
+        for ref in blockreferences:
+            block = getattr(ref, "block", None)
+            if block:
+                if self.block_identifier:
+                    if self.block_identifier.is_arrow_block(block):
+                        arrow_blocks.append(block)
+                elif getattr(block, "is_arrow", False):
                     arrow_blocks.append(block)
-            elif block.is_arrow:
-                arrow_blocks.append(block)
 
         for connection in connections:
             # 检查此连接上是否有箭头块
@@ -374,9 +373,9 @@ class ConnectionAnalyzer:
                         # 确保连接的源/目标与箭头方向匹配
                         if dot_product < 0:
                             # 如果不匹配，交换源和目标
-                            connection.source_block, connection.target_block = (
-                                connection.target_block,
-                                connection.source_block,
+                            connection.source_ref, connection.target_ref = (
+                                connection.target_ref,
+                                connection.source_ref,
                             )
 
                         connection.has_explicit_direction = True
@@ -642,6 +641,50 @@ class ConnectionAnalyzer:
         self.cad_graph.build_from_blocks_connections(list(blocks), connections)
 
         # 使用CADGraph的analyze_graph方法进行分析
+
+    def analyze_blockreference_connections_via_lines(
+        self,
+        blockreferences: List["BlockReference"],
+        lines: List["LineEntity"],
+        bbox_tolerance: float = 0.01,
+    ) -> List["Connection"]:
+        """基于BlockReference和LineEntity的边界框接触，分析BlockReference之间的连接关系。只要两端BlockReference的边界框分别与同一LineEntity的边界框有重叠，即认为它们连接。方向信息保留但不赋值（has_explicit_direction=False）。
+        Args:
+            blockreferences: BlockReference列表
+            lines: LineEntity列表
+            bbox_tolerance: 边界框重叠容差
+        Returns:
+            List[Connection]: BlockReference之间的连接关系列表
+        """
+        from src.core.data_structures import Connection
+
+        connections = []
+        conn_id = 0
+        for line in lines:
+            touched_refs = []
+            if not line.bounding_box:
+                continue
+            for ref in blockreferences:
+                if ref.bounding_box and ref.bounding_box.overlaps(
+                    line.bounding_box, tolerance=bbox_tolerance
+                ):
+                    touched_refs.append(ref)
+            if len(touched_refs) >= 2:
+                for i in range(len(touched_refs)):
+                    for j in range(i + 1, len(touched_refs)):
+                        conn_id += 1
+                        connections.append(
+                            Connection(
+                                id=f"conn_{conn_id}",
+                                source_ref=touched_refs[i],
+                                target_ref=touched_refs[j],
+                                path_segments=[line],
+                                has_explicit_direction=False,
+                                connection_type="via_line",
+                            )
+                        )
+        return connections
+
         return self.cad_graph.analyze_graph()
 
 

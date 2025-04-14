@@ -8,14 +8,14 @@ import json
 from typing import List, Dict, Tuple, Optional, Any, Union
 import uuid
 
-from core.data_structures import Entity, Block, Connection, BlockFeature, LineEntity
-from parsers.parser_interface import ParserRegistry, CADFileParser
-from parsers.dxf_parser import DXFParser
-from parsers.step_parser import STEPParser
-from feature.block_identifier import BlockIdentifier, BlockFeatureExtractor
-from connection.connection_analyzer import ConnectionAnalyzer
-from graph.cad_graph import CADGraph
-from query.cad_query import CADQueryInterface, CADQueryResults
+from src.core.data_structures import Entity, Block, Connection, BlockFeature, LineEntity
+from src.parsers.parser_interface import ParserRegistry, CADFileParser
+from src.parsers.dxf_parser import DXFParser
+from src.parsers.step_parser import STEPParser
+from src.feature.block_identifier import BlockIdentifier, BlockFeatureExtractor
+from src.connection.connection_analyzer import ConnectionAnalyzer
+from src.graph.cad_graph import CADGraph
+from src.query.cad_query import CADQueryInterface, CADQueryResults
 
 
 class CADAnalysisSystem:

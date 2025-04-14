@@ -1,1 +1,1 @@
-from query.cad_query import CADQueryInterface, CADQueryResults
+from .cad_query import CADQueryInterface, CADQueryResults

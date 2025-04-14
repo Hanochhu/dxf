@@ -6,9 +6,9 @@
 import re
 from typing import List, Dict, Tuple, Optional, Set, Any, Union
 
-from core.data_structures import Block, Connection
-from graph.cad_graph import CADGraph
-from feature.block_identifier import BlockIdentifier
+from src.core.data_structures import Block, Connection
+from src.graph.cad_graph import CADGraph
+from src.feature.block_identifier import BlockIdentifier
 
 
 class CADQueryInterface:

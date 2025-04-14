@@ -484,6 +484,16 @@ class LineEntity(Entity):
             start_point=Point.from_tuple(data["start_point"]),
             end_point=Point.from_tuple(data["end_point"]),
         )
+    def get_direction(self) -> Tuple[float, float, float]:
+        """获取方向向量（标准化）"""
+        dx = self.end_point.x - self.start_point.x
+        dy = self.end_point.y - self.start_point.y
+        dz = self.end_point.z - self.start_point.z
+        length = math.sqrt(dx**2 + dy**2 + dz**2)
+        if length == 0:
+            return (0, 0, 0)
+        return (dx / length, dy / length, dz / length)
+
 
 
 @dataclass
@@ -745,7 +755,9 @@ class BlockReference:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict, block_lookup: Dict[str, "Block"] = None) -> "BlockReference":
+    def from_dict(
+        cls, data: Dict, block_lookup: Dict[str, "Block"] = None
+    ) -> "BlockReference":
         """从字典创建块引用，需要传入block查找表"""
         block_obj = None
         if block_lookup and "block_id" in data:
@@ -934,42 +946,31 @@ class Block:
 
 @dataclass
 class Connection:
-    """连接类 - 表示两个块之间的连接"""
+    """连接类 - 表示两个BlockReference（块引用）之间的连接"""
 
     id: str
-    source_block: Block
-    target_block: Block
-    path_segments: List[LineEntity]
+    source_ref: "BlockReference"
+    target_ref: "BlockReference"
+    path_segments: List[LineEntity]  # 可选：连接的几何依据（如连接线、重叠等）
     has_explicit_direction: bool = False
     connection_type: str = "regular"  # "regular", "indirect", "special"
 
     @property
     def direction(self) -> Tuple[float, float, float]:
-        """确定连接的整体方向"""
-        if not self.path_segments:
-            # 如果没有路径段，使用从源到目标的默认方向
-            if not self.source_block.center or not self.target_block.center:
-                return (0, 0, 0)
-
-            dx = self.target_block.center.x - self.source_block.center.x
-            dy = self.target_block.center.y - self.source_block.center.y
-            dz = self.target_block.center.z - self.source_block.center.z
-
-            length = math.sqrt(dx**2 + dy**2 + dz**2)
-            if length == 0:
-                return (0, 0, 0)
-
-            return (dx / length, dy / length, dz / length)
-
-        # 如果有多个路径段，返回最后一段的方向
-        return self.path_segments[-1].get_direction()
+        """
+        确定连接的整体方向（基于path_segments的线段方向，不再用BlockReference中心点）
+        优先取最后一条path_segment的方向，否则返回(0,0,0)
+        """
+        if self.path_segments:
+            return self.path_segments[-1].get_direction()
+        return (0, 0, 0)
 
     def to_dict(self) -> Dict:
         """转换为字典表示"""
         return {
             "id": self.id,
-            "source_block_id": self.source_block.id,
-            "target_block_id": self.target_block.id,
+            "source_ref_id": self.source_ref.id,
+            "target_ref_id": self.target_ref.id,
             "path_segment_ids": [segment.id for segment in self.path_segments],
             "has_explicit_direction": self.has_explicit_direction,
             "connection_type": self.connection_type,

@@ -1,5 +1,9 @@
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 import matplotlib.pyplot as plt
 from src.system.cad_analysis_system import CADAnalysisSystem
 from src.visualization.entity_renderer import EntityRenderer

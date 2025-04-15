@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument(
         "--no-block_definitions", action="store_true", help="不显示块边界和内部结构"
     )
-    parser.add_argument("--no-labels", action="store_true", help="不显示块名称标签")
+    parser.add_argument("--no-labels", action="store_true", help="不显示块名称标签",default=True)
     parser.add_argument(
         "--block-mode",
         type=str,

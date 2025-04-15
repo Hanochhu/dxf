@@ -5,3 +5,6 @@
 
 from .dxf_visualizer import DXFVisualizer
 from .entity_renderer import EntityRenderer
+from .entity_style_manager import EntityStyleManager
+
+__all__ = ["DXFVisualizer", "EntityRenderer", "EntityStyleManager"]

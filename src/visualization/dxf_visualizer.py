@@ -12,6 +12,7 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional, Set, Any, Union
 from matplotlib.font_manager import FontProperties
 import random
+import colorsys
 
 from src.core.data_structures import (
     Point,
@@ -25,6 +26,7 @@ from src.core.data_structures import (
     BlockReference,
 )
 from src.visualization.entity_renderer import EntityRenderer
+from src.visualization.entity_style_manager import EntityStyleManager
 
 # 添加中文字体支持
 try:
@@ -54,29 +56,9 @@ class DXFVisualizer:
     def __init__(self):
         """初始化DXF可视化器"""
         self.entity_renderer = EntityRenderer()
+        self.style_manager = EntityStyleManager()  # 使用专门的样式管理器
         self.fig = None
         self.ax = None
-
-        # 可视化配置
-        self.colors = {
-            "background": "#f5f5f5",
-            "grid": "#cccccc",
-            "line": "#1f77b4",
-            "circle": "#ff7f0e",
-            "arc": "#2ca02c",
-            "text": "#9467bd",
-            "ellipse": "#8c564b",
-            "block": "#e377c2",
-            "connection": "#7f7f7f",
-            "highlight": "#d62728",
-        }
-
-        self.line_styles = {
-            "solid": "-",
-            "dashed": "--",
-            "dotted": ":",
-            "dashdot": "-.",
-        }
 
         # 视图设置
         self.margin = 20  # 边距
@@ -111,7 +93,8 @@ class DXFVisualizer:
         Args:
             color_dict: 颜色字典，键为实体类型，值为颜色代码
         """
-        self.colors.update(color_dict)
+        # 将颜色设置委托给样式管理器
+        self.style_manager.set_colors(color_dict)
 
     def create_figure(self, figsize=(12, 8), dpi=100):
         """
@@ -123,14 +106,14 @@ class DXFVisualizer:
         """
         self.fig, self.ax = plt.subplots(figsize=figsize, dpi=dpi)
         self.ax.set_aspect("equal")
-        self.ax.set_facecolor(self.colors["background"])
+        self.ax.set_facecolor(self.style_manager.colors["background"])
 
         # 应用网格和坐标轴设置
         if not self.show_axis:
             self.ax.set_axis_off()
 
         if self.show_grid:
-            self.ax.grid(True, linestyle="--", color=self.colors["grid"], alpha=0.7)
+            self.ax.grid(True, linestyle="--", color=self.style_manager.colors["grid"], alpha=0.7)
 
     def render_entities(self, entities: List[Entity], highlight_ids: List[str] = None):
         """
@@ -147,33 +130,31 @@ class DXFVisualizer:
 
         # 打印调试信息
         if self.debug_mode:
-            print(f"正在渲染 {len(entities)} 个实体")
-            entity_types = {}
-            for entity in entities:
-                etype = getattr(entity, "entity_type", "UNKNOWN")
-                if isinstance(etype, EntityType):
-                    etype = etype.name
-                entity_types[etype] = entity_types.get(etype, 0) + 1
-            print(f"实体类型统计: {entity_types}")
+            self._print_entity_debug_info(entities)
 
         # 渲染每个实体
         for entity in entities:
             if isinstance(entity, Block):  # 跳过Block定义
                 continue
+                
             is_highlighted = entity.id in highlight_ids
-
-            self.entity_renderer.render_entity(
-                entity=entity,
-                ax=self.ax,
-                color=(
-                    self.colors["highlight"]
-                    if is_highlighted
-                    else self._get_entity_color(entity)
-                ),
-                linewidth=1.5 if is_highlighted else 1.0,
-                linestyle=self.line_styles["solid"],
-                alpha=1.0,
-            )
+            
+            # 获取实体样式
+            style = self.style_manager.get_entity_style(entity, is_highlighted)
+            
+            # 渲染实体
+            self.entity_renderer.render_entity(entity=entity, ax=self.ax, **style)
+    
+    def _print_entity_debug_info(self, entities: List[Entity]):
+        """打印实体调试信息"""
+        print(f"正在渲染 {len(entities)} 个实体")
+        entity_types = {}
+        for entity in entities:
+            etype = getattr(entity, "entity_type", "UNKNOWN")
+            if isinstance(etype, EntityType):
+                etype = etype.name
+            entity_types[etype] = entity_types.get(etype, 0) + 1
+        print(f"实体类型统计: {entity_types}")
 
     def render_blocks(
         self,
@@ -195,105 +176,46 @@ class DXFVisualizer:
             return
             
         # 输出传入的块引用信息，便于检查
-        print("[块引用检查] 传入blocks参数类型: ", type(blocks))
-        if blocks:
-            for i, block in enumerate(blocks[:3]):  # 只显示前三个块，避免输出过多
-                print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'block') and block.block else '无'}")
-        
-        if block_definitions:
-            print(f"[块定义检查] 传入块定义数量: {len(block_definitions)}")
-            # 显示几个块定义的名称，帮助诊断问题
-            for i, block_def in enumerate(block_definitions[:3]):
-                print(f"[块定义检查] 块定义{i+1}: 名称={getattr(block_def, 'name', None)}, ID={getattr(block_def, 'id', None)}, 实体数量={len(getattr(block_def, 'entities', []))}")
-        
-        # 首先尝试修复具有相同名称但不同大小写的块引用和块定义
-        if block_definitions:
-            # 创建不区分大小写的块定义映射
-            case_insensitive_map = {}
-            for block_def in block_definitions:
-                if hasattr(block_def, 'name'):
-                    name_lower = block_def.name.lower()
-                    if name_lower not in case_insensitive_map:
-                        case_insensitive_map[name_lower] = []
-                    case_insensitive_map[name_lower].append(block_def)
-                    
-            # 处理没有关联块定义的块引用
-            for block_ref in blocks:
-                if not hasattr(block_ref, 'block') or block_ref.block is None:
-                    if hasattr(block_ref, 'name'):
-                        name_lower = block_ref.name.lower()
-                        if name_lower in case_insensitive_map and case_insensitive_map[name_lower]:
-                            block_ref.block = case_insensitive_map[name_lower][0]
-                            if self.debug_mode:
-                                print(f"[修复] 通过不区分大小写匹配为块引用 '{block_ref.name}' 找到块定义 '{block_ref.block.name}'")
-        
-        # 首先构建一个块定义字典，便于快速查找
-        block_def_map = {}
-        if block_definitions:
-            block_def_map = {block.name: block for block in block_definitions if hasattr(block, 'name')}
-            
-        # 检查块引用与块定义的匹配情况
-        if blocks and block_definitions:
-            matched_count = 0
-            for block_ref in blocks:
-                if hasattr(block_ref, 'name') and block_ref.name in block_def_map:
-                    matched_count += 1
-                    # 预先关联块引用和块定义
-                    if not hasattr(block_ref, 'block') or block_ref.block is None:
-                        block_ref.block = block_def_map[block_ref.name]
-            
-            print(f"[块匹配检查] 成功匹配块定义的块引用数量: {matched_count}/{len(blocks)}")
-            
-        if self.fig is None or self.ax is None:
-            self.create_figure()
+        if self.debug_mode:
+            print("[块引用检查] 传入blocks参数类型: ", type(blocks))
+            if blocks:
+                for i, block in enumerate(blocks[:3]):  # 只显示前三个块，避免输出过多
+                    print(f"  块 {i+1}: {type(block)}, ID: {getattr(block, 'id', 'unknown')}")
 
         highlight_ids = highlight_ids or []
-
-        # 打印调试信息
-        if self.debug_mode:
-            print(f"正在渲染 {len(blocks)} 个块")
-            for i, block in enumerate(blocks[:5]):  # 只显示前5个块
-                print(
-                    f"块 {i+1}: 名称={block.name}, ID={block.id}, 实体数={len(block.entities) if hasattr(block, 'entities') else 0}"
-                )
-                if hasattr(block, "bounding_box") and block.bounding_box:
-                    print(
-                        f"  边界: 最小点=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y}), "
-                        f"最大点=({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})"
-                    )
-
-            # 显示块的渲染模式
-            print(f"块渲染模式: {self.block_display_mode}")
-
-        # 生成块的随机颜色（但保持一致性）
+        
+        # 创建随机色彩映射，为每个块分配一种颜色，避免相邻块颜色相似
         block_colors = {}
-        random.seed(42)  # 使用固定种子，确保每次运行颜色一致
-
-        # 为每个块分配一个唯一的颜色
-        for block in blocks:
-            if block.id not in block_colors:
-                # 生成随机颜色，但避免与背景颜色太接近
-                while True:
-                    r = random.random() * 0.7 + 0.3  # 0.3-1.0 更明亮的颜色
-                    g = random.random() * 0.7 + 0.3
-                    b = random.random() * 0.7 + 0.3
-                    # 确保颜色与背景有足够对比度
-                    if r + g + b < 2.0:  # 避免颜色太浅
-                        block_colors[block.id] = (r, g, b)
-                        break
+        
+        # 使用golden ratio颜色生成法确保相邻块的颜色差异明显
+        golden_ratio_conjugate = 0.618033988749895
+        h = random.random()  # 使用随机起始点
+        
+        # 为每个块生成唯一颜色
+        for i, block in enumerate(blocks):
+            if hasattr(block, "id") and block.id:
+                h = (h + golden_ratio_conjugate) % 1.0
+                # HSV to RGB: 饱和度和明度固定，只改变色相
+                r, g, b = colorsys.hsv_to_rgb(h, 0.8, 0.95)
+                block_colors[block.id] = f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
 
         # 渲染每个块
         for block in blocks:
+            if not hasattr(block, "id") or not block.id:
+                continue
+                
             is_highlighted = block.id in highlight_ids
-
-            # 确定块的颜色
-            if is_highlighted:
-                block_color = self.colors["highlight"]
-            else:
-                block_color = block_colors.get(block.id, self.colors["block"])
-
+            
+            # 获取块样式 - 使用样式管理器
+            block_type = getattr(block, "entity_type", EntityType.INSERT)
+            style = self.style_manager.get_entity_style(block, is_highlighted)
+            
+            # 如果块有自定义颜色，使用它
+            if not is_highlighted and block.id in block_colors:
+                style["color"] = block_colors[block.id]
+            
             # 边界模式: 只渲染边界框
-            if self.block_display_mode == "boundary" and block.bounding_box:
+            if self.block_display_mode == "boundary" and hasattr(block, "bounding_box") and block.bounding_box:
                 width = block.bounding_box.width
                 height = block.bounding_box.height
 
@@ -302,140 +224,92 @@ class DXFVisualizer:
                     (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
                     width,
                     height,
-                    linewidth=1.5 if is_highlighted else 1.0,
-                    edgecolor=block_color,
+                    linewidth=style["linewidth"],
+                    edgecolor=style["color"],
                     facecolor="none",  # 无填充
-                    alpha=1.0,  # 完全不透明
-                    zorder=10,
-                    linestyle="-",
+                    alpha=style["alpha"],  # 完全不透明
+                    zorder=style["zorder"],
+                    linestyle=style["linestyle"],
                 )
                 self.ax.add_patch(rect)
+                
+                # 如果需要显示块标签
+                if self.show_block_labels and hasattr(block, "name") and block.name:
+                    self._add_block_label(block, style["color"])
 
             # 结构模式: 渲染块内部实体
             elif self.block_display_mode == "structure":
-                # 结构模式：遍历块引用（BlockReference），查找块定义，做仿射变换后渲染
-                from copy import deepcopy
-                block_ref = block  # blocks 实际为 BlockReference
-                if not hasattr(block_ref, "block") or block_ref.block is None:
-                    # 如果块引用没有关联的块定义，尝试从传入的块定义列表中查找
-                    if block_definitions and hasattr(block_ref, "name"):
-                        if block_ref.name in block_def_map:
-                            block_ref.block = block_def_map[block_ref.name]
-                            if self.debug_mode:
-                                print(f"[成功] 为块引用 '{block_ref.name}' 找到了对应的块定义")
-                        else:
-                            if self.debug_mode:
-                                print(f"[警告] 块引用 '{block_ref.name}' 在块定义字典中未找到匹配项")
-                            for block_def in block_definitions:
-                                if block_def.name == block_ref.name:
-                                    block_ref.block = block_def
-                                    if self.debug_mode:
-                                        print(f"[成功] 为块引用 '{block_ref.name}' 通过迭代找到了对应的块定义")
-                                    break
-                    
-                    # 如果仍然没有找到块定义，则跳过此块
-                    if not hasattr(block_ref, "block") or block_ref.block is None:
-                        if self.debug_mode:
-                            print(f"[警告] 块引用 {getattr(block_ref, 'name', None)} (ID: {getattr(block_ref, 'id', None)}) 没有关联的块定义，跳过渲染")
-                        continue
-                        
-                block_def = block_ref.block
+                # 寻找块定义
+                block_def = None
+                if block_definitions:
+                    for b in block_definitions:
+                        if b.name == block.name:
+                            block_def = b
+                            break
                 
-                # 检查块定义中的实体数量
-                if not hasattr(block_def, "entities") or not block_def.entities:
-                    if self.debug_mode:
-                        print(f"[警告] 块定义 '{block_def.name}' 没有实体或实体列表为空")
+                # 没有找到块定义，或块定义没有实体
+                if not block_def or not hasattr(block_def, "entities") or not block_def.entities:
+                    # 只渲染边界框
+                    if hasattr(block, "bounding_box") and block.bounding_box:
+                        width = block.bounding_box.width
+                        height = block.bounding_box.height
+                        
+                        rect = patches.Rectangle(
+                            (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
+                            width,
+                            height,
+                            linewidth=style["linewidth"],
+                            edgecolor=style["color"],
+                            facecolor="none",
+                            alpha=style["alpha"],
+                            zorder=style["zorder"],
+                        )
+                        self.ax.add_patch(rect)
                     continue
                 
-                if self.debug_mode and len(block_def.entities) > 0:
-                    print(f"[信息] 块 '{block_def.name}' 包含 {len(block_def.entities)} 个实体")
-                
-                # 检查是否有缩放、旋转和位置信息 
-                sx, sy, sz = getattr(block_ref, "scale", (1.0, 1.0, 1.0))
-                angle_rad = math.radians(getattr(block_ref, "rotation", 0.0))
-                
-                # 确保位置属性存在
-                if not hasattr(block_ref, "position") or block_ref.position is None:
-                    if self.debug_mode:
-                        print(f"[警告] 块引用 '{block_ref.name}' 缺少位置信息，将使用原点(0,0,0)")
-                    dx, dy, dz = 0.0, 0.0, 0.0
-                else:
-                    dx, dy, dz = block_ref.position.x, block_ref.position.y, block_ref.position.z
-                
-                # 渲染块内的每个实体
-                entity_count = 0
+                # 应用变换: 缩放、旋转和平移
                 transformed_entities = []
                 
-                # 先对所有实体应用变换，避免重复变换和引用问题
+                # 获取变换参数
+                sx = getattr(block, "scale_x", 1.0)
+                sy = getattr(block, "scale_y", 1.0)
+                angle_deg = getattr(block, "rotation", 0.0)
+                angle_rad = math.radians(angle_deg)
+                
+                if hasattr(block, "position") and block.position:
+                    dx, dy = block.position.x, block.position.y
+                else:
+                    dx, dy = 0, 0
+                
+                # 变换每个实体
                 for entity in block_def.entities:
-                    entity_count += 1
-                    ent = deepcopy(entity)
-                    etype = getattr(ent, "entity_type", None)
+                    # 创建深拷贝以避免修改原实体
+                    import copy
+                    entity_copy = copy.deepcopy(entity)
                     
-                    # 嵌套块引用需要特殊处理
-                    if etype == EntityType.INSERT and hasattr(ent, "block") and ent.block is not None:
-                        # 递归渲染嵌套块引用
-                        nested_ref = deepcopy(ent)
-                        # 应用变换
-                        if hasattr(nested_ref, "position") and nested_ref.position:
-                            nested_ref.position.x *= sx
-                            nested_ref.position.y *= sy
-                            x0, y0 = nested_ref.position.x, nested_ref.position.y
-                            nested_ref.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                            nested_ref.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                            nested_ref.position.x += dx
-                            nested_ref.position.y += dy
-                        
-                        # 累积旋转角度
-                        if hasattr(nested_ref, "rotation"):
-                            nested_ref.rotation = getattr(nested_ref, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
-                        else:
-                            nested_ref.rotation = getattr(block_ref, "rotation", 0.0)
-                            
-                        # 累积缩放因子
-                        if hasattr(nested_ref, "scale"):
-                            nested_scale = nested_ref.scale
-                            nested_ref.scale = (
-                                nested_scale[0] * sx,
-                                nested_scale[1] * sy,
-                                nested_scale[2] * sz
-                            )
-                        else:
-                            nested_ref.scale = (sx, sy, sz)
-                            
-                        if self.debug_mode:
-                            print(f"[递归] 处理嵌套块引用: '{getattr(nested_ref, 'name', 'N/A')}', 位置=({nested_ref.position.x}, {nested_ref.position.y}), 旋转={getattr(nested_ref, 'rotation', 0.0)}")
-                        
-                        # 查找嵌套块的块定义
-                        if (not hasattr(nested_ref, "block") or nested_ref.block is None) and block_definitions and hasattr(nested_ref, "name"):
-                            for block_def in block_definitions:
-                                if hasattr(block_def, "name") and block_def.name == nested_ref.name:
-                                    nested_ref.block = block_def
-                                    if self.debug_mode:
-                                        print(f"[嵌套块] 为嵌套块 '{nested_ref.name}' 找到了对应的块定义")
-                                    break
-                        
-                        # 递归调用
-                        self.render_blocks([nested_ref], highlight_ids, block_definitions)
-                        continue
-                    # 处理其他实体类型
-                    else:
-                        # 应用通用坐标变换 (缩放、旋转、平移)
-                        if etype != EntityType.INSERT:  # 避免重复处理嵌套块
-                            self._apply_coordinate_transform(ent, sx, sy, angle_rad, dx, dy)
-                            transformed_entities.append(ent)
+                    # 应用坐标变换
+                    self._apply_coordinate_transform(entity_copy, sx, sy, angle_rad, dx, dy)
+                    
+                    # 添加到变换后的实体列表
+                    transformed_entities.append(entity_copy)
                 
                 # 渲染所有已变换的实体
                 for ent in transformed_entities:
                     try:
+                        # 获取实体的样式，但使用块的颜色
+                        ent_style = self.style_manager.get_entity_style(ent, is_highlighted)
+                        ent_style["color"] = style["color"]  # 使用块的颜色
+                        
+                        # 确保不覆盖原始实体的线型，只有在原始实体没有特定线型时才使用块的线型
+                        if is_highlighted:
+                            # 高亮状态使用实线
+                            ent_style["linestyle"] = self.style_manager.line_styles["solid"]
+                        # 否则保留原始线型
+                        
                         self.entity_renderer.render_entity(
                             entity=ent,
                             ax=self.ax,
-                            color=block_color,
-                            linewidth=1.5 if is_highlighted else 1.0,
-                            linestyle="-",
-                            alpha=1.0,
-                            zorder=5,
+                            **ent_style
                         )
                     except Exception as e:
                         if self.debug_mode:
@@ -450,112 +324,179 @@ class DXFVisualizer:
                         (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
                         width, height,
                         linewidth=0.8,
-                        edgecolor=block_color,
+                        edgecolor=style["color"],
                         facecolor='none',
                         alpha=0.5,
                         zorder=10,
                         linestyle='--'
                     )
                     self.ax.add_patch(rect)
-                    
-                # 显示块标签
+                
+                # 如果需要显示块标签
                 if self.show_block_labels and hasattr(block, "name") and block.name:
-                    # 确定标签位置（在块边界框的左上角或中心位置）
-                    if hasattr(block, "bounding_box") and block.bounding_box and self._is_bounding_box_valid(block.bounding_box):
-                        label_x = block.bounding_box.min_point.x
-                        label_y = block.bounding_box.max_point.y + 5  # 稍微偏上一点
-                    elif hasattr(block, "position"):
-                        label_x = block.position.x
-                        label_y = block.position.y + 10
-                    else:
-                        # 默认位置
-                        label_x, label_y = 0, 0
-                    
-                    # 添加带背景的标签
-                    self.ax.text(
-                        label_x, label_y,
-                        block.name,
-                        fontsize=self.block_label_size,
-                        color='black',
-                        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.5'),
-                        zorder=20,
-                        ha='left', va='bottom'
-                    )
+                    self._add_block_label(block, style["color"])
+    
+    def _add_block_label(self, block, color):
+        """添加块标签"""
+        if not hasattr(block, "bounding_box") or not block.bounding_box:
+            return
+            
+        # 在块的中心添加标签
+        center_x = (block.bounding_box.min_point.x + block.bounding_box.max_point.x) / 2
+        center_y = (block.bounding_box.min_point.y + block.bounding_box.max_point.y) / 2
+        
+        self.ax.text(
+            center_x, center_y,
+            f"{block.name}",
+            ha='center',
+            va='center',
+            fontsize=self.block_label_size,
+            color=color,
+            fontweight='bold',
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                fc="white",
+                ec=color,
+                alpha=0.7
+            )
+        )
 
     def render_connections(
         self, connections: List[Any], highlight_ids: List[str] = None
     ):
         """
-        渲染连接
+        渲染实体之间的连接
 
         Args:
             connections: 连接列表
             highlight_ids: 高亮连接ID列表
         """
-        if self.fig is None or self.ax is None:
-            self.create_figure()
+        if not connections:
+            return
 
         highlight_ids = highlight_ids or []
 
-        # 打印调试信息
         if self.debug_mode:
-            print(f"正在渲染 {len(connections)} 个连接")
+            print(f"渲染 {len(connections)} 个连接")
 
         # 渲染每个连接
-        for connection in connections:
-            is_highlighted = connection.id in highlight_ids
+        for conn in connections:
+            if not hasattr(conn, "id") or not hasattr(conn, "source") or not hasattr(conn, "target"):
+                continue
 
-            # 渲染连接中的路径段
-            for segment in connection.path_segments:
-                self.entity_renderer.render_entity(
-                    entity=segment,
-                    ax=self.ax,
-                    color=(
-                        self.colors["highlight"]
-                        if is_highlighted
-                        else self.colors["connection"]
-                    ),
-                    linewidth=2.0 if is_highlighted else 1.5,
-                    linestyle=self.line_styles["solid"],
-                    alpha=1.0,
+            # 判断是否高亮
+            is_highlighted = conn.id in highlight_ids
+            
+            # 获取连接样式
+            conn_style = self.style_manager.get_entity_style(conn, is_highlighted)
+            conn_style["color"] = self.style_manager.colors["connection"]
+            if is_highlighted:
+                conn_style["color"] = self.style_manager.colors["highlight"]
+            
+            # 获取连接点坐标
+            if hasattr(conn.source, "position") and hasattr(conn.target, "position"):
+                start_x, start_y = conn.source.position.x, conn.source.position.y
+                end_x, end_y = conn.target.position.x, conn.target.position.y
+                
+                # 绘制连接线
+                self.ax.plot(
+                    [start_x, end_x],
+                    [start_y, end_y],
+                    color=conn_style["color"],
+                    linewidth=conn_style["linewidth"],
+                    linestyle=conn_style["linestyle"],
+                    alpha=conn_style["alpha"],
+                    zorder=conn_style["zorder"]
                 )
-
-            # 添加方向标记（如果有明确方向）
-            if connection.has_explicit_direction and connection.path_segments:
-                segment = connection.path_segments[0]
-                if hasattr(segment, "start_point") and hasattr(segment, "end_point"):
-                    # 计算中点
-                    mid_x = (segment.start_point.x + segment.end_point.x) / 2
-                    mid_y = (segment.start_point.y + segment.end_point.y) / 2
-
-                    # 计算方向
-                    dx = segment.end_point.x - segment.start_point.x
-                    dy = segment.end_point.y - segment.start_point.y
-                    length = math.sqrt(dx * dx + dy * dy)
-
+                
+                # 添加箭头指示方向
+                if hasattr(conn, "direction") and conn.direction != "none":
+                    # 计算方向向量
+                    dx, dy = end_x - start_x, end_y - start_y
+                    length = np.sqrt(dx * dx + dy * dy)
+                    
                     if length > 0:
-                        # 归一化方向向量
+                        # 单位化
                         dx, dy = dx / length, dy / length
+                        
+                        # 确定箭头位置（根据连接方向）
+                        if conn.direction == "forward" or conn.direction == "both":
+                            # 在终点附近添加箭头
+                            arrow_x = end_x - dx * 10  # 箭头稍微偏离终点
+                            arrow_y = end_y - dy * 10
+                            
+                            self.ax.arrow(
+                                arrow_x, arrow_y,
+                                dx * 8, dy * 8,  # 箭头长度
+                                head_width=5,
+                                fc=conn_style["color"],
+                                ec=conn_style["color"],
+                            )
+                            
+                        if conn.direction == "backward" or conn.direction == "both":
+                            # 在起点附近添加箭头
+                            arrow_x = start_x + dx * 10  # 箭头稍微偏离起点
+                            arrow_y = start_y + dy * 10
+                            
+                            self.ax.arrow(
+                                arrow_x, arrow_y,
+                                -dx * 8, -dy * 8,  # 反向箭头长度
+                                head_width=5,
+                                fc=conn_style["color"],
+                                ec=conn_style["color"],
+                            )
+                
+                # 可选: 在连接中点添加连接类型标签
+                if hasattr(conn, "type") and conn.type:
+                    mid_x = (start_x + end_x) / 2
+                    mid_y = (start_y + end_y) / 2
+                    
+                    # 添加带背景的标签
+                    self.ax.text(
+                        mid_x, mid_y,
+                        conn.type,
+                        fontsize=8,
+                        color=conn_style["color"],
+                        ha='center',
+                        va='center',
+                        bbox=dict(
+                            facecolor='white',
+                            alpha=0.7,
+                            edgecolor='none',
+                            boxstyle='round,pad=0.2'
+                        ),
+                        zorder=10
+                    )
+                    
+    def _get_entity_color(self, entity: Entity) -> str:
+        """
+        获取实体颜色 - 该方法将被弃用，使用style_manager.get_entity_style代替
 
-                        # 添加箭头
-                        self.ax.arrow(
-                            mid_x - dx * 5,
-                            mid_y - dy * 5,
-                            dx * 10,
-                            dy * 10,
-                            head_width=5,
-                            head_length=5,
-                            fc=(
-                                self.colors["highlight"]
-                                if is_highlighted
-                                else self.colors["connection"]
-                            ),
-                            ec=(
-                                self.colors["highlight"]
-                                if is_highlighted
-                                else self.colors["connection"]
-                            ),
-                        )
+        Args:
+            entity: 实体对象
+
+        Returns:
+            颜色代码
+        """
+        # 实体类型到颜色键的映射
+        entity_type_map = {
+            EntityType.LINE: "line",
+            EntityType.CIRCLE: "circle",
+            EntityType.ARC: "arc",
+            EntityType.ELLIPSE: "ellipse",
+            EntityType.TEXT: "text",
+            EntityType.MTEXT: "text",
+            EntityType.POLYLINE: "line",
+            EntityType.LWPOLYLINE: "line",
+            EntityType.SPLINE: "line",
+            EntityType.INSERT: "block",
+        }
+        
+        if not hasattr(entity, "entity_type"):
+            return self.style_manager.colors["unknown"]
+
+        color_key = entity_type_map.get(entity.entity_type, "line")
+        return self.style_manager.colors.get(color_key, self.style_manager.colors["line"])
 
     def render_dxf(
         self,
@@ -774,44 +715,44 @@ class DXFVisualizer:
         legend_elements = [
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["line"],
+                edgecolor=self.style_manager.colors["line"],
                 label="线段",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["circle"],
+                edgecolor=self.style_manager.colors["circle"],
                 label="圆",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["arc"],
+                edgecolor=self.style_manager.colors["arc"],
                 label="圆弧",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["ellipse"],
+                edgecolor=self.style_manager.colors["ellipse"],
                 label="椭圆",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["block"],
+                edgecolor=self.style_manager.colors["block"],
                 label="块",
                 linestyle="--",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["connection"],
+                edgecolor=self.style_manager.colors["connection"],
                 label="连接",
                 linewidth=1.5,
             ),
             patches.Patch(
                 facecolor="none",
-                edgecolor=self.colors["highlight"],
+                edgecolor=self.style_manager.colors["highlight"],
                 label="高亮",
                 linewidth=2.0,
             ),
@@ -833,27 +774,6 @@ class DXFVisualizer:
 
         # 确保图例在其他元素上方
         legend.set_zorder(30)
-
-    def _get_entity_color(self, entity: Entity) -> str:
-        """
-        根据实体类型获取颜色
-
-        Args:
-            entity: 实体对象
-
-        Returns:
-            str: 颜色代码
-        """
-        entity_type_map = {
-            EntityType.LINE: "line",
-            EntityType.CIRCLE: "circle",
-            EntityType.ARC: "arc",
-            EntityType.ELLIPSE: "ellipse",
-            EntityType.TEXT: "text",
-        }
-
-        color_key = entity_type_map.get(entity.entity_type, "line")
-        return self.colors.get(color_key, self.colors["line"])
 
     def save_image(self, filename: str, dpi: int = 300):
         """
@@ -1045,3 +965,46 @@ class DXFVisualizer:
             return True
         except:
             return False
+
+    def debug_linetype(self, entities=None, n_samples=3):
+        """
+        调试线型渲染问题
+        
+        Args:
+            entities: 要调试的实体列表(为None时使用当前已加载的所有实体)
+            n_samples: 每种类型分析的样本数量
+        """
+        if not self.debug_mode:
+            print("需要先启用调试模式: set_debug_mode(True)")
+            return
+            
+        print("\n=== 线型渲染调试 ===")
+        
+        # 如果没有提供实体列表，使用当前已加载的实体
+        if entities is None:
+            print("没有提供实体列表，无法进行分析")
+            return
+            
+        # 按类型分组实体
+        entity_types = {}
+        for entity in entities:
+            etype = getattr(entity, "entity_type", "Unknown")
+            if isinstance(etype, EntityType):
+                etype = etype.name
+            if etype not in entity_types:
+                entity_types[etype] = []
+            entity_types[etype].append(entity)
+        
+        # 对每种类型的实体进行分析
+        for etype, ents in entity_types.items():
+            print(f"\n## 实体类型: {etype} (共 {len(ents)} 个)")
+            # 分析样本
+            for i, entity in enumerate(ents[:n_samples]):
+                print(f"\n样本 {i+1}:")
+                self.style_manager.debug_entity_linetype(entity)
+                
+                # 获取样式
+                style = self.style_manager.get_entity_style(entity)
+                print(f"获取的样式: {style}")
+                
+        print("\n=== 线型渲染调试结束 ===\n")

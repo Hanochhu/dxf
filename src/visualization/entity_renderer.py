@@ -7,7 +7,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional, Any, Union
 from matplotlib.font_manager import FontProperties
 import warnings
 
@@ -42,73 +42,81 @@ class EntityRenderer:
     """
     实体渲染器类
 
-    提供各类DXF实体的渲染方法
+    专注于提供各类DXF实体的渲染方法
+    不处理样式管理，仅负责实际的绘图操作
     """
 
     def __init__(self):
         """初始化实体渲染器"""
-        # 渲染方法映射
-        self.render_methods = {
-            EntityType.LINE: self.render_line,
-            EntityType.CIRCLE: self.render_circle,
-            EntityType.ARC: self.render_arc,
-            EntityType.ELLIPSE: self.render_ellipse,
-            EntityType.TEXT: self.render_text,
-            EntityType.MTEXT: self.render_text,  # MTEXT使用同样的文本渲染方法
-            EntityType.POLYLINE: self.render_polyline,
-            EntityType.LWPOLYLINE: self.render_polyline,  # 轻量级多段线使用相同的渲染方法
-            EntityType.SPLINE: self.render_spline,
-            EntityType.ARROW: self.render_arrow,  # 箭头类型
-            EntityType.INSERT: self.render_insert,  # 块插入类型
-            EntityType.UNKNOWN: self.render_unknown,
-            EntityType.LEADER: self.render_leader,
-            EntityType.SOLID: self.render_solid,
+        # 渲染方法映射，注意现在使用_开头的私有方法名
+        self._render_methods = {
+            EntityType.LINE: self._render_line,
+            EntityType.CIRCLE: self._render_circle,
+            EntityType.ARC: self._render_arc,
+            EntityType.ELLIPSE: self._render_ellipse,
+            EntityType.TEXT: self._render_text,
+            EntityType.MTEXT: self._render_text,  # MTEXT使用同样的文本渲染方法
+            EntityType.POLYLINE: self._render_polyline,
+            EntityType.LWPOLYLINE: self._render_polyline,  # 轻量级多段线使用相同的渲染方法
+            EntityType.SPLINE: self._render_spline,
+            EntityType.ARROW: self._render_arrow,  # 箭头类型
+            EntityType.INSERT: self._render_insert,  # 块插入类型
+            EntityType.UNKNOWN: self._render_unknown,
+            EntityType.LEADER: self._render_leader,
+            EntityType.SOLID: self._render_solid,
+            EntityType.POINT: self._render_point,  # 添加点实体类型
         }
 
-    def render_entity(self, entity: Entity, ax: plt.Axes, **kwargs):
+    def render_entity(self, entity: Entity, ax: plt.Axes, **style_params):
         """
+        统一的实体渲染入口点
+        
         根据实体类型调用对应的渲染方法
 
         Args:
             entity: 实体对象
             ax: Matplotlib轴对象
-            **kwargs: 传递给具体渲染方法的参数
+            **style_params: 样式参数（颜色、线宽等）
         """
         # 获取实体类型
+        entity_type = self._get_entity_type(entity)
+        
+        # 获取对应的渲染方法
+        render_method = self._render_methods.get(entity_type, self._render_unknown)
+        
+        # 调用渲染方法
+        try:
+            render_method(entity, ax, **style_params)
+        except Exception as e:
+            print(f"警告: 渲染实体时出错: {str(e)}")
+    
+    def _get_entity_type(self, entity: Any) -> EntityType:
+        """获取实体类型"""
         entity_type = getattr(entity, "entity_type", None)
-
-        # 检查是否有自定义的渲染方法
-        render_method = None
-
+        
         # 支持枚举类型
         if isinstance(entity_type, EntityType):
-            render_method = self.render_methods.get(entity_type)
-
+            return entity_type
+            
         # 支持字符串类型
         elif isinstance(entity_type, str):
             # 尝试将字符串转换为EntityType枚举
             try:
-                entity_type = EntityType[entity_type.upper()]
-                render_method = self.render_methods.get(entity_type)
+                return EntityType[entity_type.upper()]
             except (KeyError, ValueError):
                 # 如果转换失败，尝试直接匹配字符串
-                for enum_type, method in self.render_methods.items():
+                for enum_type in EntityType:
                     if enum_type.name.lower() == entity_type.lower():
-                        render_method = method
-                        break
+                        return enum_type
+                
+                # 特殊处理点类型
+                if entity_type.upper() == "POINT":
+                    return EntityType.POINT
+        
+        return EntityType.UNKNOWN
 
-        # 处理点类型的特殊情况
-        if entity_type == "POINT" or (
-            hasattr(entity_type, "value") and entity_type.value == "POINT"
-        ):
-            self.render_point(entity, ax, **kwargs)
-        # 调用渲染方法
-        elif render_method:
-            render_method(entity, ax, **kwargs)
-        else:
-            print(f"警告: 不支持的实体类型 {entity_type}")
-
-    def render_line(
+    # 注意：所有渲染方法改为私有方法（加上_前缀）
+    def _render_line(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -147,7 +155,7 @@ class EntityRenderer:
             zorder=zorder,
         )
 
-    def render_circle(
+    def _render_circle(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -191,7 +199,7 @@ class EntityRenderer:
         # 添加到图中
         ax.add_patch(circle)
 
-    def render_arc(
+    def _render_arc(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -250,7 +258,7 @@ class EntityRenderer:
         # 添加到图中
         ax.add_patch(arc)
 
-    def render_ellipse(
+    def _render_ellipse(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -305,7 +313,7 @@ class EntityRenderer:
         # 添加到图中
         ax.add_patch(ellipse)
 
-    def render_text(
+    def _render_text(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -450,7 +458,7 @@ class EntityRenderer:
         # 调整字体回退策略，避免缺失字形的警告
         text_obj.set_fontfamily(["DejaVu Sans", "SimHei", "Arial Unicode MS"])
 
-    def render_spline(
+    def _render_spline(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -494,7 +502,7 @@ class EntityRenderer:
 
             # 更精确的实现可以使用scipy.interpolate计算B样条或NURBS
 
-    def render_polyline(
+    def _render_polyline(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -541,7 +549,7 @@ class EntityRenderer:
                 zorder=zorder,
             )
 
-    def render_point(
+    def _render_point(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -573,7 +581,7 @@ class EntityRenderer:
                 zorder=zorder,
             )
 
-    def render_hatch(
+    def _render_hatch(
         self, entity: Any, ax: plt.Axes, color: str = "#bcbd22", alpha: float = 0.3
     ):
         """
@@ -604,7 +612,7 @@ class EntityRenderer:
 
                     ax.add_patch(polygon)
 
-    def render_arrow(
+    def _render_arrow(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -660,7 +668,7 @@ class EntityRenderer:
                 zorder=zorder,
             )
 
-    def render_insert(
+    def _render_insert(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -711,7 +719,7 @@ class EntityRenderer:
                 zorder=zorder + 1,
             )
 
-    def render_leader(
+    def _render_leader(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -725,7 +733,7 @@ class EntityRenderer:
             ys = [pt.y if hasattr(pt, "y") else pt[1] for pt in entity.vertices]
             ax.plot(xs, ys, color=color, linewidth=linewidth, **kwargs)
 
-    def render_solid(
+    def _render_solid(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -739,7 +747,7 @@ class EntityRenderer:
             ys = [pt.y if hasattr(pt, "y") else pt[1] for pt in entity.points]
             ax.fill(xs, ys, color=color, alpha=alpha, **kwargs)
 
-    def render_unknown(
+    def _render_unknown(
         self,
         entity: Any,
         ax: plt.Axes,
@@ -766,7 +774,7 @@ class EntityRenderer:
         # 尝试提取实体的基本信息并渲染为点
         if hasattr(entity, "position"):
             # 如果有位置属性，渲染为点
-            self.render_point(
+            self._render_point(
                 entity, ax, color=color, size=3.0, alpha=alpha, zorder=zorder
             )
         elif hasattr(entity, "center"):

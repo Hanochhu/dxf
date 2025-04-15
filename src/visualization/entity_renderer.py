@@ -335,37 +335,112 @@ class EntityRenderer:
             return
 
         # 计算旋转角度（弧度转角度）
-        angle_degrees = (
-            math.degrees(entity.rotation) if hasattr(entity, "rotation") else 0
-        )
+        angle_degrees = getattr(entity, "rotation", 0.0)
+        if not isinstance(angle_degrees, (int, float)):
+            angle_degrees = 0.0
 
         # 设置对齐方式
         halign = "center"
         valign = "center"
 
         if hasattr(entity, "alignment"):
-            if entity.alignment == "LEFT":
-                halign = "left"
-            elif entity.alignment == "RIGHT":
-                halign = "right"
-            elif entity.alignment == "CENTER":
-                halign = "center"
+            alignment = entity.alignment
+            if isinstance(alignment, str):
+                if alignment.upper() == "LEFT":
+                    halign = "left"
+                elif alignment.upper() == "RIGHT":
+                    halign = "right"
+                elif alignment.upper() == "CENTER":
+                    halign = "center"
 
-        # 获取文本内容，转换为字符串
-        text_content = str(entity.text)
-
-        # 字体大小，使用height属性或默认值
-        fontsize = entity.height if hasattr(entity, "height") else 10
-
+        # 获取文本内容，转换为字符串，处理多行文本
+        text_content = str(getattr(entity, "text", ""))
+        if not text_content:
+            return
+            
+        # 处理多行文本
+        lines = text_content.split("\\P")
+        if len(lines) > 1:
+            # 多行文本，每行单独处理
+            line_height = getattr(entity, "height", 10) * 1.5  # 行间距为1.5倍字体高度
+            for i, line in enumerate(lines):
+                # 计算垂直偏移
+                y_offset = -i * line_height
+                
+                # 根据旋转角度计算偏移
+                if angle_degrees != 0:
+                    x_offset = y_offset * math.sin(math.radians(angle_degrees))
+                    y_offset = y_offset * math.cos(math.radians(angle_degrees))
+                else:
+                    x_offset = 0
+                    
+                # 渲染每一行
+                self._render_text_line(
+                    ax=ax,
+                    x=entity.position.x + x_offset,
+                    y=entity.position.y + y_offset,
+                    text=line,
+                    fontsize=getattr(entity, "height", 10),
+                    color=color,
+                    alpha=alpha,
+                    rotation=angle_degrees,
+                    halign=halign,
+                    valign=valign,
+                    zorder=zorder
+                )
+        else:
+            # 单行文本
+            self._render_text_line(
+                ax=ax,
+                x=entity.position.x,
+                y=entity.position.y,
+                text=text_content,
+                fontsize=getattr(entity, "height", 10),
+                color=color,
+                alpha=alpha,
+                rotation=angle_degrees,
+                halign=halign,
+                valign=valign,
+                zorder=zorder
+            )
+            
+    def _render_text_line(self, ax, x, y, text, fontsize, color, alpha, rotation, halign, valign, zorder):
+        """
+        渲染单行文本
+        
+        Args:
+            ax: Matplotlib轴对象
+            x, y: 文本位置
+            text: 文本内容
+            fontsize: 字体大小
+            color: 颜色
+            alpha: 透明度
+            rotation: 旋转角度
+            halign: 水平对齐方式
+            valign: 垂直对齐方式
+            zorder: 图层顺序
+        """
+        # 清理文本中的特殊转义符号
+        text = text.replace("\\U+", "\\u")
+        
+        # 尝试解码Unicode转义序列
+        try:
+            text = bytes(text, "utf-8").decode("unicode_escape")
+        except:
+            pass
+            
+        # 字体大小处理
+        if not isinstance(fontsize, (int, float)) or fontsize <= 0:
+            fontsize = 10
+            
         # 对中文文本使用专门的中文字体
         text_obj = ax.text(
-            entity.position.x,
-            entity.position.y,
-            text_content,
+            x, y,
+            text,
             fontsize=fontsize,
             color=color,
             alpha=alpha,
-            rotation=angle_degrees,
+            rotation=rotation,
             horizontalalignment=halign,
             verticalalignment=valign,
             fontproperties=chinese_font,  # 使用中文字体

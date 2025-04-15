@@ -185,14 +185,65 @@ class DXFVisualizer:
         渲染块列表
 
         Args:
-            blocks: 块列表
+            blocks: 块引用列表
             highlight_ids: 高亮块ID列表
+            block_definitions: 块定义列表，用于在渲染块引用时提供块定义
         """
+        if not blocks:
+            if self.debug_mode:
+                print("[警告] 没有块引用传入 render_blocks 方法")
+            return
+            
         # 输出传入的块引用信息，便于检查
         print("[块引用检查] 传入blocks参数类型: ", type(blocks))
         if blocks:
-            for i, block in enumerate(blocks):
-                print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'bounding_box') and block.bounding_box else '无'}")
+            for i, block in enumerate(blocks[:3]):  # 只显示前三个块，避免输出过多
+                print(f"[块引用检查] 块{i+1}: 类型={type(block)}, 名称={getattr(block, 'name', None)}, ID={getattr(block, 'id', None)}, 边界={'有' if hasattr(block, 'block') and block.block else '无'}")
+        
+        if block_definitions:
+            print(f"[块定义检查] 传入块定义数量: {len(block_definitions)}")
+            # 显示几个块定义的名称，帮助诊断问题
+            for i, block_def in enumerate(block_definitions[:3]):
+                print(f"[块定义检查] 块定义{i+1}: 名称={getattr(block_def, 'name', None)}, ID={getattr(block_def, 'id', None)}, 实体数量={len(getattr(block_def, 'entities', []))}")
+        
+        # 首先尝试修复具有相同名称但不同大小写的块引用和块定义
+        if block_definitions:
+            # 创建不区分大小写的块定义映射
+            case_insensitive_map = {}
+            for block_def in block_definitions:
+                if hasattr(block_def, 'name'):
+                    name_lower = block_def.name.lower()
+                    if name_lower not in case_insensitive_map:
+                        case_insensitive_map[name_lower] = []
+                    case_insensitive_map[name_lower].append(block_def)
+                    
+            # 处理没有关联块定义的块引用
+            for block_ref in blocks:
+                if not hasattr(block_ref, 'block') or block_ref.block is None:
+                    if hasattr(block_ref, 'name'):
+                        name_lower = block_ref.name.lower()
+                        if name_lower in case_insensitive_map and case_insensitive_map[name_lower]:
+                            block_ref.block = case_insensitive_map[name_lower][0]
+                            if self.debug_mode:
+                                print(f"[修复] 通过不区分大小写匹配为块引用 '{block_ref.name}' 找到块定义 '{block_ref.block.name}'")
+        
+        # 首先构建一个块定义字典，便于快速查找
+        block_def_map = {}
+        if block_definitions:
+            block_def_map = {block.name: block for block in block_definitions if hasattr(block, 'name')}
+            
+        # 检查块引用与块定义的匹配情况
+        if blocks and block_definitions:
+            matched_count = 0
+            for block_ref in blocks:
+                if hasattr(block_ref, 'name') and block_ref.name in block_def_map:
+                    matched_count += 1
+                    # 预先关联块引用和块定义
+                    if not hasattr(block_ref, 'block') or block_ref.block is None:
+                        block_ref.block = block_def_map[block_ref.name]
+            
+            print(f"[块匹配检查] 成功匹配块定义的块引用数量: {matched_count}/{len(blocks)}")
+            
         if self.fig is None or self.ax is None:
             self.create_figure()
 
@@ -242,10 +293,6 @@ class DXFVisualizer:
                 block_color = block_colors.get(block.id, self.colors["block"])
 
             # 边界模式: 只渲染边界框
-            # if block.bounding_box:
-            #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=({block.bounding_box.min_point.x}, {block.bounding_box.min_point.y})-({block.bounding_box.max_point.x}, {block.bounding_box.max_point.y})")
-            # else:
-            #     print(f"[边界模式] 块: 名称={block.name}, ID={block.id}, 边界=无")
             if self.block_display_mode == "boundary" and block.bounding_box:
                 width = block.bounding_box.width
                 height = block.bounding_box.height
@@ -270,103 +317,116 @@ class DXFVisualizer:
                 from copy import deepcopy
                 block_ref = block  # blocks 实际为 BlockReference
                 if not hasattr(block_ref, "block") or block_ref.block is None:
-                    continue
+                    # 如果块引用没有关联的块定义，尝试从传入的块定义列表中查找
+                    if block_definitions and hasattr(block_ref, "name"):
+                        if block_ref.name in block_def_map:
+                            block_ref.block = block_def_map[block_ref.name]
+                            if self.debug_mode:
+                                print(f"[成功] 为块引用 '{block_ref.name}' 找到了对应的块定义")
+                        else:
+                            if self.debug_mode:
+                                print(f"[警告] 块引用 '{block_ref.name}' 在块定义字典中未找到匹配项")
+                            for block_def in block_definitions:
+                                if block_def.name == block_ref.name:
+                                    block_ref.block = block_def
+                                    if self.debug_mode:
+                                        print(f"[成功] 为块引用 '{block_ref.name}' 通过迭代找到了对应的块定义")
+                                    break
+                    
+                    # 如果仍然没有找到块定义，则跳过此块
+                    if not hasattr(block_ref, "block") or block_ref.block is None:
+                        if self.debug_mode:
+                            print(f"[警告] 块引用 {getattr(block_ref, 'name', None)} (ID: {getattr(block_ref, 'id', None)}) 没有关联的块定义，跳过渲染")
+                        continue
+                        
                 block_def = block_ref.block
-                sx, sy, sz = block_ref.scale if hasattr(block_ref, "scale") else (1.0, 1.0, 1.0)
+                
+                # 检查块定义中的实体数量
+                if not hasattr(block_def, "entities") or not block_def.entities:
+                    if self.debug_mode:
+                        print(f"[警告] 块定义 '{block_def.name}' 没有实体或实体列表为空")
+                    continue
+                
+                if self.debug_mode and len(block_def.entities) > 0:
+                    print(f"[信息] 块 '{block_def.name}' 包含 {len(block_def.entities)} 个实体")
+                
+                # 检查是否有缩放、旋转和位置信息 
+                sx, sy, sz = getattr(block_ref, "scale", (1.0, 1.0, 1.0))
                 angle_rad = math.radians(getattr(block_ref, "rotation", 0.0))
-                dx, dy, dz = block_ref.position.x, block_ref.position.y, block_ref.position.z
+                
+                # 确保位置属性存在
+                if not hasattr(block_ref, "position") or block_ref.position is None:
+                    if self.debug_mode:
+                        print(f"[警告] 块引用 '{block_ref.name}' 缺少位置信息，将使用原点(0,0,0)")
+                    dx, dy, dz = 0.0, 0.0, 0.0
+                else:
+                    dx, dy, dz = block_ref.position.x, block_ref.position.y, block_ref.position.z
+                
+                # 渲染块内的每个实体
+                entity_count = 0
+                transformed_entities = []
+                
+                # 先对所有实体应用变换，避免重复变换和引用问题
                 for entity in block_def.entities:
+                    entity_count += 1
                     ent = deepcopy(entity)
                     etype = getattr(ent, "entity_type", None)
-                    # 线段
-                    if hasattr(ent, "start_point") and hasattr(ent, "end_point"):
-                        # 缩放
-                        ent.start_point.x *= sx
-                        ent.start_point.y *= sy
-                        ent.end_point.x *= sx
-                        ent.end_point.y *= sy
-                        # 旋转
-                        x0, y0 = ent.start_point.x, ent.start_point.y
-                        x1, y1 = ent.end_point.x, ent.end_point.y
-                        ent.start_point.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        ent.start_point.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        ent.end_point.x = x1 * math.cos(angle_rad) - y1 * math.sin(angle_rad)
-                        ent.end_point.y = x1 * math.sin(angle_rad) + y1 * math.cos(angle_rad)
-                        # 平移
-                        ent.start_point.x += dx
-                        ent.start_point.y += dy
-                        ent.end_point.x += dx
-                        ent.end_point.y += dy
-                    # 圆
-                    elif hasattr(ent, "center") and hasattr(ent, "radius"):
-                        ent.center.x *= sx
-                        ent.center.y *= sy
-                        x0, y0 = ent.center.x, ent.center.y
-                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        ent.center.x += dx
-                        ent.center.y += dy
-                        ent.radius *= (sx + sy) / 2.0
-                    # 圆弧
-                    elif etype == EntityType.ARC and hasattr(ent, "center") and hasattr(ent, "radius"):
-                        ent.center.x *= sx
-                        ent.center.y *= sy
-                        x0, y0 = ent.center.x, ent.center.y
-                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        ent.center.x += dx
-                        ent.center.y += dy
-                        ent.radius *= (sx + sy) / 2.0
-                        ent.start_angle = getattr(ent, "start_angle", 0.0) + getattr(block_ref, "rotation", 0.0)
-                        ent.end_angle = getattr(ent, "end_angle", 0.0) + getattr(block_ref, "rotation", 0.0)
-                    # 多段线
-                    elif etype in [EntityType.LWPOLYLINE, EntityType.POLYLINE] and hasattr(ent, "vertices"):
-                        for v in ent.vertices:
-                            v.x *= sx
-                            v.y *= sy
-                            x0, y0 = v.x, v.y
-                            v.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                            v.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                            v.x += dx
-                            v.y += dy
-                    # 椭圆
-                    elif etype == EntityType.ELLIPSE and hasattr(ent, "center"):
-                        ent.center.x *= sx
-                        ent.center.y *= sy
-                        x0, y0 = ent.center.x, ent.center.y
-                        ent.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        ent.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        ent.center.x += dx
-                        ent.center.y += dy
-                        # 主轴方向等可扩展
-                    # 文本
-                    elif etype in [EntityType.TEXT, EntityType.MTEXT] and hasattr(ent, "position"):
-                        ent.position.x *= sx
-                        ent.position.y *= sy
-                        x0, y0 = ent.position.x, ent.position.y
-                        ent.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        ent.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        ent.position.x += dx
-                        ent.position.y += dy
-                        ent.rotation = getattr(ent, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
-                    # 嵌套块引用递归
-                    elif etype == EntityType.INSERT and hasattr(ent, "block") and ent.block is not None:
+                    
+                    # 嵌套块引用需要特殊处理
+                    if etype == EntityType.INSERT and hasattr(ent, "block") and ent.block is not None:
                         # 递归渲染嵌套块引用
                         nested_ref = deepcopy(ent)
-                        nested_ref.position.x *= sx
-                        nested_ref.position.y *= sy
-                        x0, y0 = nested_ref.position.x, nested_ref.position.y
-                        nested_ref.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
-                        nested_ref.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
-                        nested_ref.position.x += dx
-                        nested_ref.position.y += dy
-                        nested_ref.rotation = getattr(nested_ref, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
+                        # 应用变换
+                        if hasattr(nested_ref, "position") and nested_ref.position:
+                            nested_ref.position.x *= sx
+                            nested_ref.position.y *= sy
+                            x0, y0 = nested_ref.position.x, nested_ref.position.y
+                            nested_ref.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                            nested_ref.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                            nested_ref.position.x += dx
+                            nested_ref.position.y += dy
+                        
+                        # 累积旋转角度
+                        if hasattr(nested_ref, "rotation"):
+                            nested_ref.rotation = getattr(nested_ref, "rotation", 0.0) + getattr(block_ref, "rotation", 0.0)
+                        else:
+                            nested_ref.rotation = getattr(block_ref, "rotation", 0.0)
+                            
+                        # 累积缩放因子
+                        if hasattr(nested_ref, "scale"):
+                            nested_scale = nested_ref.scale
+                            nested_ref.scale = (
+                                nested_scale[0] * sx,
+                                nested_scale[1] * sy,
+                                nested_scale[2] * sz
+                            )
+                        else:
+                            nested_ref.scale = (sx, sy, sz)
+                            
+                        if self.debug_mode:
+                            print(f"[递归] 处理嵌套块引用: '{getattr(nested_ref, 'name', 'N/A')}', 位置=({nested_ref.position.x}, {nested_ref.position.y}), 旋转={getattr(nested_ref, 'rotation', 0.0)}")
+                        
+                        # 查找嵌套块的块定义
+                        if (not hasattr(nested_ref, "block") or nested_ref.block is None) and block_definitions and hasattr(nested_ref, "name"):
+                            for block_def in block_definitions:
+                                if hasattr(block_def, "name") and block_def.name == nested_ref.name:
+                                    nested_ref.block = block_def
+                                    if self.debug_mode:
+                                        print(f"[嵌套块] 为嵌套块 '{nested_ref.name}' 找到了对应的块定义")
+                                    break
+                        
                         # 递归调用
                         self.render_blocks([nested_ref], highlight_ids, block_definitions)
                         continue
+                    # 处理其他实体类型
                     else:
-                        if self.debug_mode:
-                            print(f"[结构模式] 未处理类型: {etype}, id: {getattr(ent, 'id', None)}")
+                        # 应用通用坐标变换 (缩放、旋转、平移)
+                        if etype != EntityType.INSERT:  # 避免重复处理嵌套块
+                            self._apply_coordinate_transform(ent, sx, sy, angle_rad, dx, dy)
+                            transformed_entities.append(ent)
+                
+                # 渲染所有已变换的实体
+                for ent in transformed_entities:
                     try:
                         self.entity_renderer.render_entity(
                             entity=ent,
@@ -382,21 +442,45 @@ class DXFVisualizer:
                             print(f"渲染实体 {getattr(ent, 'id', None)} 时出错: {str(e)}")
 
                 # 仍然显示边界框，但用虚线表示
-                # if block.bounding_box:
-                #     width = block.bounding_box.width
-                #     height = block.bounding_box.height
-                #
-                #     rect = patches.Rectangle(
-                #         (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
-                #         width, height,
-                #         linewidth=1.0,
-                #         edgecolor=block_color,
-                #         facecolor='none',
-                #         alpha=0.7,
-                #         zorder=10,
-                #         linestyle='--'
-                #     )
-                #     self.ax.add_patch(rect)
+                if hasattr(block, "bounding_box") and block.bounding_box and self._is_bounding_box_valid(block.bounding_box):
+                    width = block.bounding_box.width
+                    height = block.bounding_box.height
+
+                    rect = patches.Rectangle(
+                        (block.bounding_box.min_point.x, block.bounding_box.min_point.y),
+                        width, height,
+                        linewidth=0.8,
+                        edgecolor=block_color,
+                        facecolor='none',
+                        alpha=0.5,
+                        zorder=10,
+                        linestyle='--'
+                    )
+                    self.ax.add_patch(rect)
+                    
+                # 显示块标签
+                if self.show_block_labels and hasattr(block, "name") and block.name:
+                    # 确定标签位置（在块边界框的左上角或中心位置）
+                    if hasattr(block, "bounding_box") and block.bounding_box and self._is_bounding_box_valid(block.bounding_box):
+                        label_x = block.bounding_box.min_point.x
+                        label_y = block.bounding_box.max_point.y + 5  # 稍微偏上一点
+                    elif hasattr(block, "position"):
+                        label_x = block.position.x
+                        label_y = block.position.y + 10
+                    else:
+                        # 默认位置
+                        label_x, label_y = 0, 0
+                    
+                    # 添加带背景的标签
+                    self.ax.text(
+                        label_x, label_y,
+                        block.name,
+                        fontsize=self.block_label_size,
+                        color='black',
+                        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.5'),
+                        zorder=20,
+                        ha='left', va='bottom'
+                    )
 
     def render_connections(
         self, connections: List[Any], highlight_ids: List[str] = None
@@ -799,3 +883,165 @@ class DXFVisualizer:
             plt.close(self.fig)
             self.fig = None
             self.ax = None
+
+    def _apply_coordinate_transform(self, entity, sx, sy, angle_rad, dx, dy):
+        """
+        对实体应用坐标变换（缩放、旋转、平移）
+        
+        Args:
+            entity: 要变换的实体
+            sx, sy: 缩放因子
+            angle_rad: 旋转角度（弧度）
+            dx, dy: 平移距离
+        """
+        # 获取实体类型以针对特殊类型应用特定变换
+        etype = getattr(entity, "entity_type", None)
+        
+        # 根据实体类型应用特定变换
+        if etype == EntityType.ARC:
+            # 圆弧需要特殊处理：中心点变换 + 角度旋转
+            if hasattr(entity, "center") and hasattr(entity, "radius"):
+                # 中心点变换
+                entity.center.x *= sx
+                entity.center.y *= sy
+                x0, y0 = entity.center.x, entity.center.y
+                entity.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                entity.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                entity.center.x += dx
+                entity.center.y += dy
+                
+                # 半径缩放 - 取平均缩放因子
+                entity.radius *= (sx + sy) / 2.0
+                
+                # 起止角度旋转
+                entity.start_angle = getattr(entity, "start_angle", 0.0) + math.degrees(angle_rad)
+                entity.end_angle = getattr(entity, "end_angle", 0.0) + math.degrees(angle_rad)
+                
+            return
+            
+        elif etype == EntityType.ELLIPSE:
+            # 椭圆需要特殊处理：中心点变换 + 主次轴变换
+            if hasattr(entity, "center"):
+                # 中心点变换
+                entity.center.x *= sx
+                entity.center.y *= sy
+                x0, y0 = entity.center.x, entity.center.y
+                entity.center.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                entity.center.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                entity.center.x += dx
+                entity.center.y += dy
+                
+                # 主轴变换 (如果有)
+                if hasattr(entity, "major_axis"):
+                    entity.major_axis *= (sx + sy) / 2.0
+                
+                # 比率保持不变
+                # 旋转角度调整
+                if hasattr(entity, "rotation"):
+                    entity.rotation = getattr(entity, "rotation", 0.0) + math.degrees(angle_rad)
+                    
+            return
+            
+        elif etype in [EntityType.TEXT, EntityType.MTEXT]:
+            # 文本需要特殊处理：位置变换 + 旋转角度累加
+            if hasattr(entity, "position"):
+                # 位置变换
+                entity.position.x *= sx
+                entity.position.y *= sy
+                x0, y0 = entity.position.x, entity.position.y
+                entity.position.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                entity.position.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                entity.position.x += dx
+                entity.position.y += dy
+                
+                # 旋转角度累加
+                if hasattr(entity, "rotation"):
+                    entity.rotation = getattr(entity, "rotation", 0.0) + math.degrees(angle_rad)
+                
+            return
+            
+        # 通用坐标点变换 - 对于其他实体类型
+        for attr_name in dir(entity):
+            if attr_name.startswith('_'):
+                continue
+                
+            attr = getattr(entity, attr_name, None)
+            
+            # 变换点对象
+            if attr and hasattr(attr, 'x') and hasattr(attr, 'y'):
+                # 缩放
+                attr.x *= sx
+                attr.y *= sy
+                
+                # 旋转
+                x0, y0 = attr.x, attr.y
+                attr.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                attr.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                
+                # 平移
+                attr.x += dx
+                attr.y += dy
+                
+            # 变换点列表（如多段线顶点）
+            elif attr_name == 'vertices' and isinstance(attr, list):
+                for vertex in attr:
+                    if hasattr(vertex, 'x') and hasattr(vertex, 'y'):
+                        # 缩放
+                        vertex.x *= sx
+                        vertex.y *= sy
+                        
+                        # 旋转
+                        x0, y0 = vertex.x, vertex.y
+                        vertex.x = x0 * math.cos(angle_rad) - y0 * math.sin(angle_rad)
+                        vertex.y = x0 * math.sin(angle_rad) + y0 * math.cos(angle_rad)
+                        
+                        # 平移
+                        vertex.x += dx
+                        vertex.y += dy
+            
+            # 调整半径 (如圆)
+            elif attr_name == 'radius' and isinstance(attr, (int, float)):
+                entity.radius *= (sx + sy) / 2.0
+
+    def _is_bounding_box_valid(self, bbox):
+        """
+        检查边界框是否有效
+        
+        Args:
+            bbox: 边界框对象
+            
+        Returns:
+            bool: 边界框是否有效
+        """
+        if not bbox:
+            return False
+        
+        if not hasattr(bbox, "min_point") or not hasattr(bbox, "max_point"):
+            return False
+        
+        if not bbox.min_point or not bbox.max_point:
+            return False
+        
+        # 检查坐标是否是有效数值
+        try:
+            if (not isinstance(bbox.min_point.x, (int, float)) or 
+                not isinstance(bbox.min_point.y, (int, float)) or
+                not isinstance(bbox.max_point.x, (int, float)) or
+                not isinstance(bbox.max_point.y, (int, float))):
+                return False
+            
+            # 检查是否是无穷或NaN
+            import math
+            if (math.isinf(bbox.min_point.x) or math.isnan(bbox.min_point.x) or
+                math.isinf(bbox.min_point.y) or math.isnan(bbox.min_point.y) or
+                math.isinf(bbox.max_point.x) or math.isnan(bbox.max_point.x) or
+                math.isinf(bbox.max_point.y) or math.isnan(bbox.max_point.y)):
+                return False
+            
+            # 确保最小点小于最大点
+            if bbox.min_point.x > bbox.max_point.x or bbox.min_point.y > bbox.max_point.y:
+                return False
+            
+            return True
+        except:
+            return False

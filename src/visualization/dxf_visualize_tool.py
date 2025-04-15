@@ -141,15 +141,17 @@ def main():
                 block_definitions = parse_result.get(
                     "block_definitions", parse_result.get("blocks", [])
                 )
+                block_references = parse_result.get("block_references", [])
             else:
                 entities = getattr(parse_result, "entities", [])
                 block_definitions = getattr(parse_result, "block_definitions", [])
+                block_references = getattr(parse_result, "block_references", [])
 
         # 调试信息: 显示解析结果
         if args.debug:
             print(f"\n=== DXF解析结果摘要 ===")
             print(
-                f"解析完成: 找到 {len(entities)} 个实体和 {len(block_definitions)} 个块"
+                f"解析完成: 找到 {len(entities)} 个实体, {len(block_definitions)} 个块定义, {len(block_references)} 个块引用"
             )
 
             # 实体类型统计
@@ -165,15 +167,25 @@ def main():
 
             print("实体类型统计:", entity_types)
 
-            # 显示块信息
+            # 显示块定义信息
             if block_definitions and len(block_definitions) > 0:
-                print("\n块信息:")
+                print("\n块定义信息:")
                 for i, block in enumerate(block_definitions[:5]):  # 只打印前5个
                     print(
-                        f"  块 {i+1}: {block.name} (含 {len(block.entities) if hasattr(block, 'entities') else 0} 个实体)"
+                        f"  块定义 {i+1}: {block.name} (含 {len(block.entities) if hasattr(block, 'entities') else 0} 个实体)"
                     )
                 if len(block_definitions) > 5:
-                    print(f"  ...及其他 {len(block_definitions)-5} 个块")
+                    print(f"  ...及其他 {len(block_definitions)-5} 个块定义")
+                    
+            # 显示块引用信息
+            if block_references and len(block_references) > 0:
+                print("\n块引用信息:")
+                for i, block_ref in enumerate(block_references[:5]):  # 只打印前5个
+                    print(
+                        f"  块引用 {i+1}: {getattr(block_ref, 'name', 'N/A')} (位置: {getattr(block_ref, 'position', 'N/A')})"
+                    )
+                if len(block_references) > 5:
+                    print(f"  ...及其他 {len(block_references)-5} 个块引用")
 
         # 显示图层信息
         if args.show_layers:
@@ -337,9 +349,23 @@ def main():
     elif args.block_mode == "structure":
         render_blocks = block_references
         render_block_definitions = block_definitions
+        # 确保每个块引用都能找到对应的块定义
+        if render_blocks and render_block_definitions:
+            block_def_map = {block.name: block for block in render_block_definitions if hasattr(block, 'name')}
+            for block_ref in render_blocks:
+                if hasattr(block_ref, 'name') and block_ref.name in block_def_map:
+                    if not hasattr(block_ref, 'block') or block_ref.block is None:
+                        block_ref.block = block_def_map[block_ref.name]
     else:
         render_blocks = block_references
         render_block_definitions = None
+
+    # 设置调试模式
+    if args.debug:
+        visualizer.set_debug_mode(True)
+        print(f"渲染模式: {'structure' if args.block_mode == 'structure' else 'boundary'}")
+        print(f"块引用数量: {len(block_references) if block_references else 0}")
+        print(f"块定义数量: {len(block_definitions) if block_definitions else 0}")
 
     # 渲染DXF内容
     print("正在渲染DXF内容...")
@@ -369,21 +395,12 @@ def main():
         block_definitions=render_block_definitions,
     )
 
-    # 渲染
-    visualizer.render_dxf(
-        entities=entities,
-        blocks=render_blocks,
-        connections=render_connections,
-        focus_area=focus_area,
-    )
-
     # 高亮指定块
     if highlight_block_ids and render_blocks:
         visualizer.render_blocks(
-            block_definitions=[
-                b for b in block_definitions if b.id in highlight_block_ids
-            ],
+            blocks=[b for b in render_blocks if b.id in highlight_block_ids],
             highlight_ids=highlight_block_ids,
+            block_definitions=render_block_definitions
         )
 
     # 保存图像

@@ -794,6 +794,73 @@ class ConnectionAnalyzer:
                     id2ref[conn.target_ref.id] = conn.target_ref
         return list(id2ref.values())
 
+    def sort_segments_to_polyline(self, segments, tolerance=1e-3):
+        """
+        将一组线段按端点顺序串联成折线点序列
+        
+        Args:
+            segments: 线段列表
+            tolerance: 端点匹配的容差
+            
+        Returns:
+            List[Point]: 按顺序排列的点列表，形成一条连续的折线
+        """
+        if not segments:
+            return []
+            
+        # 构建端点到线段的映射
+        from collections import defaultdict
+        point_map = defaultdict(list)
+        for seg in segments:
+            for pt in [seg.start_point, seg.end_point]:
+                key = (round(pt.x / tolerance), round(pt.y / tolerance), round(pt.z / tolerance))
+                point_map[key].append(seg)
+                
+        # 找到端点只出现一次的点，作为首尾
+        endpoint_count = {}
+        for seg in segments:
+            for pt in [seg.start_point, seg.end_point]:
+                key = (round(pt.x / tolerance), round(pt.y / tolerance), round(pt.z / tolerance))
+                endpoint_count[key] = endpoint_count.get(key, 0) + 1
+        endpoints = [k for k, v in endpoint_count.items() if v == 1]
+        
+        # 从任一端点出发，串联所有线段
+        used = set()
+        polyline = []
+        if endpoints:
+            # 有首尾
+            start_key = endpoints[0]
+        else:
+            # 闭合环
+            start_key = list(point_map.keys())[0]
+            
+        current_key = start_key
+        while True:
+            segs = [s for s in point_map[current_key] if id(s) not in used]
+            if not segs:
+                break
+                
+            seg = segs[0]
+            used.add(id(seg))
+            
+            if not polyline:
+                polyline.append(seg.start_point)
+                polyline.append(seg.end_point)
+            else:
+                # 判断如何衔接
+                if abs(seg.start_point.x - polyline[-1].x) < tolerance and abs(seg.start_point.y - polyline[-1].y) < tolerance:
+                    polyline.append(seg.end_point)
+                else:
+                    polyline.append(seg.start_point)
+                    
+            # 下一个端点
+            if abs(seg.end_point.x - polyline[-1].x) < tolerance and abs(seg.end_point.y - polyline[-1].y) < tolerance:
+                current_key = (round(seg.end_point.x / tolerance), round(seg.end_point.y / tolerance), round(seg.end_point.z / tolerance))
+            else:
+                current_key = (round(seg.start_point.x / tolerance), round(seg.start_point.y / tolerance), round(seg.start_point.z / tolerance))
+                
+        return polyline
+
 
 class ConnectionClassifier:
     """连接分类器"""
